@@ -88,3 +88,24 @@ fn invalid_sizes_and_completion_advances_are_rejected() {
     q.memory.write_u16(USED + 2, 33);
     assert_eq!(q.reclaim(), Err(Error::Corrupt));
 }
+
+#[test]
+fn interrupt_arming_rechecks_completions_and_preserves_ownership() {
+    for rx in [false, true] {
+        let mut q = queue(rx);
+        if !rx {
+            q.transmit(b"hello").unwrap();
+        }
+        assert!(!q.arm_interrupts().unwrap());
+        assert_eq!(q.memory.read_u16(AVAILABLE), 0);
+        complete(&mut q, 0, if rx { 12 } else { 0 });
+        assert!(q.arm_interrupts().unwrap());
+        assert!(q.owned[0]);
+        q.suppress_interrupts();
+        assert_eq!(q.memory.read_u16(AVAILABLE), 1);
+    }
+    let mut q = queue(true);
+    q.memory.write_u16(USED + 2, 33);
+    assert_eq!(q.arm_interrupts(), Err(Error::Corrupt));
+    assert_eq!(q.arm_interrupts(), Err(Error::Corrupt));
+}

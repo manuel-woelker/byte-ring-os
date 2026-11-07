@@ -88,6 +88,28 @@ impl<'a> Queue<'a> {
         fence(Ordering::SeqCst);
         Ok(())
     }
+    /// Enable notifications before a used-ring recheck to close the sleep race.
+    pub fn arm_interrupts(&mut self) -> Result<bool, Error> {
+        self.memory.write_u16(AVAILABLE, 0);
+        fence(Ordering::SeqCst);
+        self.has_completion()
+    }
+    pub fn suppress_interrupts(&mut self) {
+        self.memory.write_u16(AVAILABLE, 1);
+        fence(Ordering::SeqCst);
+    }
+    fn has_completion(&mut self) -> Result<bool, Error> {
+        if self.poisoned {
+            return Err(Error::Corrupt);
+        }
+        let count = self.memory.read_u16(USED + 2).wrapping_sub(self.used);
+        fence(Ordering::Acquire);
+        if count > self.size {
+            self.poisoned = true;
+            return Err(Error::Corrupt);
+        }
+        Ok(count != 0)
+    }
     fn completion(&mut self) -> Result<Option<(u16, usize)>, Error> {
         if self.poisoned {
             return Err(Error::Corrupt);

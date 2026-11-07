@@ -32,10 +32,11 @@ register context, error codes, and page-fault address/access details before
 halting. Double faults use an emergency stack.
 
 Boot support is a minimal Multiboot v1 adapter with an initial identity map and
-stack, plus fatal exception handling. There is no memory manager, device
-interrupt handling, ring buffer, userspace, or CPU syscall entry yet. A small
-bytecode VM now supports RETURN and generic WRITE, with stdout handle 0 bound
-to COM1 in the boot context. See [Bytecode API](docs/Bytecode%20API.md).
+stack, plus fatal exception handling. There is no memory manager, ring buffer,
+userspace, or CPU syscall entry yet. Network IRQs wake a single foreground
+owner; there is no scheduler. A small bytecode VM now supports RETURN and
+generic WRITE, with stdout handle 0 bound to COM1 in the boot context. See
+[Bytecode API](docs/Bytecode%20API.md).
 
 A separate network image now supports modern virtio-net, static IPv4
 `192.0.2.2/24`, ARP, and logged ICMP echo replies. Use `./n demo-ping` for an
@@ -43,7 +44,9 @@ unprivileged demonstration, or follow [Networking](docs/Networking.md) for host
 TAP ping. A separate kernel-hosted HTTP server uses smoltcp to serve an embedded
 page at `http://192.0.2.2:8080/`. Run `./n run-http` with the same TAP, or use
 `./n http-test` for rootless TCP/HTTP verification. There is no
-application-facing network service or socket API.
+application-facing network service or socket API. Both network images halt while
+idle and wake on NIC interrupts; HTTP also arms one-shot timers for TCP and
+request deadlines.
 
 ## Development
 

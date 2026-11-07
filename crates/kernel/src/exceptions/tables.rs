@@ -91,6 +91,8 @@ static MACHINE_CHECK_STACK: BootCell<Stack> = BootCell(UnsafeCell::new(Stack([0;
 unsafe extern "C" {
     static exception_stubs: [u64; 32];
     static unexpected_interrupt_stub: u64;
+    #[cfg(feature = "network")]
+    static irq_stubs: [u64; 16];
 }
 
 const _: () = assert!(size_of::<Gate>() == 16);
@@ -129,6 +131,12 @@ pub(super) unsafe fn install() {
                 addr_of!(exception_stubs).cast::<u64>().add(vector).read()
             } else {
                 addr_of!(unexpected_interrupt_stub).read()
+            };
+            #[cfg(feature = "network")]
+            let address = if (32..48).contains(&vector) {
+                addr_of!(irq_stubs).cast::<u64>().add(vector - 32).read()
+            } else {
+                address
             };
             let ist = match vector {
                 8 => 1,

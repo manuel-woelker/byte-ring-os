@@ -53,3 +53,43 @@ def send(connection, frame):
     connection.sendall(struct.pack("!I", len(frame)) + frame)
 
 
+
+
+class Qmp:
+    """Small synchronous QMP client; unsolicited events do not consume replies."""
+    def __init__(self, connection):
+        import json
+        self.json = json
+        connection.settimeout(4)
+        self.stream = connection.makefile("rwb", buffering=0)
+        assert "QMP" in self.json.loads(self.stream.readline())
+        self.identifier = 0
+        self.execute("qmp_capabilities")
+
+    def execute(self, command, arguments=None):
+        self.identifier += 1
+        self.stream.write(self.json.dumps({"execute": command, "arguments": arguments or {}, "id": self.identifier}).encode() + b"\n")
+        while True:
+            message = self.json.loads(self.stream.readline())
+            if message.get("id") == self.identifier:
+                assert "error" not in message, message
+                return message["return"]
+
+    def halted(self):
+        # HMP register inspection reports the actual x86 CPU halt state. A
+        # monitor query is not a guest interrupt and cannot hide a missing IRQ.
+        registers = self.execute("human-monitor-command", {"command-line": "info registers"})
+        return "HLT=1" in registers
+
+    def assert_idle(self):
+        import time
+        time.sleep(.2)
+        assert self.halted(), "quiet guest is busy instead of halted"
+        before = self.execute("human-monitor-command", {"command-line": "info irq"})
+        time.sleep(.1)
+        assert self.halted(), "quiet guest did not remain halted"
+        after = self.execute("human-monitor-command", {"command-line": "info irq"})
+        assert before == after, "interrupt activity continued during quiet idle"
+
+    def close(self):
+        self.stream.close()

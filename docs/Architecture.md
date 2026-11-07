@@ -42,8 +42,9 @@ The supported initial platform is QEMU's single-core x86_64 PC with COM1 at
 start of Rust entry, the kernel installs an IDT, GDT, and TSS for fatal
 exception diagnostics, with separate emergency stacks for double faults, NMIs,
 and machine checks. This is a development boot path, not a general hardware boot
-guarantee. There is no allocator, scheduler, SMP, device interrupt handling, or
-memory manager. Maskable interrupts remain disabled.
+guarantee. There is no allocator, scheduler, SMP, or memory manager. Ordinary
+boot/fault images keep maskable interrupts disabled; network images enable them
+only while sleeping, as described below.
 
 Host tests enable the explicit `test-hal` feature. Production builds reject it;
 host builds reject the native I/O backend. Separate Cargo invocations avoid
@@ -74,11 +75,12 @@ WRITE to stdout. Portable packet code lives in kernel-core; register access
 and raw DMA operations use the compile-time HAL. The driver never exposes DMA
 or MMIO handles through the VM.
 
-PCI capabilities select validated BAR windows rather than fixed addresses.
-The boot-owned mapper adds uncached supervisor mappings above 1 GiB and below
-4 GiB. Permanently pinned static queue/buffer storage uses coherent x86 DMA
-without an IOMMU. Queue ownership, bounds, and publication ordering remain
-explicit. No heap, scheduler, or device interrupt service is needed yet.
+PCI capabilities select validated BAR windows rather than fixed addresses. The
+boot-owned mapper adds uncached supervisor mappings above 1 GiB and below 4 GiB.
+Permanently pinned static queue/buffer storage uses coherent x86 DMA without an
+IOMMU. Queue ownership, bounds, and publication ordering remain explicit. No
+heap, scheduler, or concurrent device service is needed. Returning IRQ entries
+wake the foreground owner when it sleeps.
 
 See [Networking](Networking.md) for topology, tests, TAP instructions, and
 limits, and
@@ -86,17 +88,17 @@ limits, and
 for decisions. The rootless Unix-stream test verifies packets independently;
 host TAP ping is an optional separate workflow. Ordinary boot/fault images do
 not require a NIC. UDP, general sockets, and application networking are
-unimplemented. Polling consumes idle CPU; device-driven sleep remains future
-work.
+unimplemented. A quiet network image sleeps until a NIC interrupt.
 
 ## HTTP image
 
 The separate `http` feature uses the same native virtio device with pinned
-[smoltcp](https://github.com/smoltcp-rs/smoltcp) 0.14.0 for Ethernet, IPv4,
-TCP, and ICMP echo replies. Default features, heap allocation, offloads, and
-fragment reassembly are disabled. A safe driver adapter copies frames into
-private buffers, checks TX capacity before offering tokens, and reports device
-failures to the kernel. Each interface poll accepts at most 16 frames.
+[smoltcp](https://github.com/smoltcp-rs/smoltcp) 0.14.0 for Ethernet, IPv4, TCP,
+and ICMP echo replies. Default features, heap allocation, offloads, and fragment
+reassembly are disabled. A safe driver adapter copies frames into private
+buffers, checks TX capacity before offering tokens, and reports device failures
+to the kernel. Each interface poll accepts at most 16 frames; pending
+completions prevent sleep between batches.
 
 A single boot-owned socket listens at `192.0.2.2:8080` with 2048-byte RX and
 1024-byte TX storage. Portable kernel-core code parses at most 1024 header
@@ -116,6 +118,38 @@ an experimental development endpoint, without TLS, persistent connections,
 request bodies, routing, or production entropy. See
 [DR-006](<decisions/DR-006 Serve a bounded HTTP endpoint using smoltcp.md>) for
 the dependency and ownership decision.
+
+## Network interrupts and idle
+
+Both network images remap the legacy 8259 PIC to vectors 32–47 and use the
+validated firmware-assigned PCI INTx line, configured as level-triggered in
+ELCR. Only the NIC, its cascade route, and an optional PIT deadline are
+unmasked. Ordinary boot/fault images keep their existing behavior.
+
+Foreground code runs with IF clear. Small assembly IRQ entries record pending
+IRQ bits and clear IF in the saved return frame; they use no general or SIMD
+registers, call no Rust, and access no devices. After HLT returns, foreground
+code masks PIC routes, handles EOI (including spurious IRQ 7/15), and suppresses
+queue notifications/clears the virtio ISR before processing more work. There
+is no shared driver borrow or concurrent UART/network servicing.
+
+Before HLT, the NIC enables RX/TX completion notifications, orders publication,
+and rechecks both used rings. Pending completions force another poll. The PIC
+holds an arrival after that check, and adjacent `sti; hlt; cli` closes the
+interrupt-enable/sleep race. All PIC, ELCR, PIT, and device I/O uses the HAL.
+
+HTTP waits for the earliest smoltcp or application deadline. PIT channel 0
+runs one-shot countdowns, rounded up and limited to approximately 55 ms;
+long deadlines are re-evaluated after waking. Channel 2 calibration supplies
+the TSC clock. A listener with no deadline arms no timer, and the firmware's
+periodic PIT tick is stopped. The ping image has no timer fallback. Immediate
+application work and already-due deadlines continue foreground processing.
+
+This is single-core QEMU PC support, without APIC/MSI-X or a scheduler. QMP
+integration checks verify HLT and no IRQ activity in quiet idle, followed by
+NIC wakeup, a burst exceeding the receive budget, retransmission, and deadline
+recovery. See
+[DR-007](<decisions/DR-007 Sleep between network events using PIC interrupts.md>).
 
 ## Intended interaction model
 
@@ -154,8 +188,8 @@ mappings must precede isolated applications.
 
 ## Next milestones
 
-1. Establish explicit memory permissions and interrupt-controller/device
-   interrupt handling before introducing concurrent device access.
+1. Establish explicit memory permissions and synchronization before introducing
+   concurrent device access; extend interrupt routing when SMP is introduced.
 2. Specify the wire codec for the accepted queue API and implement bounded
    rings, ownership, CQ backpressure, and hostile-control-state tests.
 3. Connect the existing bytecode interpreter to queue consumption and map

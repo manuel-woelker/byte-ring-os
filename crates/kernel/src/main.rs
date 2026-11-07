@@ -10,6 +10,8 @@ mod files;
 #[cfg(feature = "http")]
 mod http;
 #[cfg(feature = "network")]
+mod idle;
+#[cfg(feature = "network")]
 mod mmio;
 #[cfg(feature = "network")]
 mod net;

@@ -1,6 +1,6 @@
 # Networking
 
-The network image provides a polled modern PCI virtio-net device with static
+The network image provides a modern PCI virtio-net device with static
 IPv4, ARP replies, and ICMP echo replies. A separate HTTP image adds TCP for
 a kernel-hosted static page. Neither image has DHCP, DNS, IPv6, routing,
 fragment reassembly, or an application-facing network API.
@@ -198,8 +198,10 @@ or change routes without identifying where the traffic is lost.
   4 GiB using uncached, supervisor-only 2 MiB mappings. Other MMIO layouts fail
   explicitly. This bootstrap mapper is not a general memory manager.
 - `drivers::virtio_net` negotiates VERSION_1 and MAC only, configures one RX/TX
-  split queue pair, and keeps device interrupts suppressed. It acknowledges ISR
-  state while polling and bounds initialization/configuration retries.
+  split queue pair, and suppresses notifications while foreground code polls.
+  Before sleep it enables RX/TX notifications and rechecks used rings,
+  preventing lost wakeups. It acknowledges ISR state in foreground code and
+  bounds initialization/configuration retries.
 - `drivers::virtqueue` owns 32 descriptors and 2048-byte buffers per queue,
   reduced if the device supports fewer entries. Static DMA memory is aligned,
   permanently pinned, and accessed through HAL memory operations without Rust
@@ -225,9 +227,11 @@ or change routes without identifying where the traffic is lost.
 
 The current platform assumes one x86_64 QEMU PC CPU, coherent DMA, and no IOMMU
 translation. Application SQ/CQ queues remain separate future work; applications
-never receive raw virtqueue descriptors or DMA/MMIO handles. Polling consumes
-CPU while idle. Interrupt-driven sleep is a later improvement once wakeups and
-scheduling have a defined contract.
+never receive raw virtqueue descriptors or DMA/MMIO handles. Both network images
+now use interrupt-driven HLT during idle. The firmware PCI INTx route and legacy
+PIC wake the foreground owner without running device code inside handlers. HTTP
+arms a one-shot PIT deadline for TCP/request timers; a quiet listener and the
+ping image have no periodic timer wakeups.
 
 See
 [DR-005](<decisions/DR-005 Use polled virtio networking with static IPv4.md>)

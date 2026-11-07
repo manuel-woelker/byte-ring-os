@@ -6,6 +6,7 @@ fn configuration() -> [u32; 64] {
     words[1] = 1 << 20;
     words[4] = 0x80000004;
     words[13] = 0x40;
+    words[15] = 0x10b;
     for (index, kind) in [1u32, 2, 3, 4].into_iter().enumerate() {
         let position = 16 + index * 5;
         let next = if index == 3 {
@@ -32,6 +33,7 @@ fn discover(words: [u32; 64]) -> Result<Transport, Error> {
 fn modern_capabilities_and_64_bit_bar_are_discovered() {
     let device = discover(configuration()).unwrap();
     assert_eq!(device.bdf, 0x1800);
+    assert_eq!(device.irq, 11);
     assert_eq!(device.common.address, 0x80000000);
     assert_eq!(device.device.address, 0x80003000);
     assert_eq!(device.notify_multiplier, 4);
@@ -77,4 +79,22 @@ fn multifunction_discovery_uses_the_correct_function() {
     io.pci_function(0x1800, first, [0; 6]);
     io.pci_function(0x1900, configuration(), [0xffffc004, u32::MAX, 0, 0, 0, 0]);
     assert_eq!(Pci::new(io.ports(0xcf8, 8)).discover().unwrap().bdf, 0x1900);
+}
+
+#[test]
+fn firmware_irq_and_pin_are_validated_and_intx_is_enabled() {
+    for value in [0, 0x100, 0x102, 0x108, 0x10d, 0x110, 0x1ff, 0x50b] {
+        let mut words = configuration();
+        words[15] = value;
+        assert!(matches!(discover(words), Err(Error::Interrupt)));
+    }
+    let mut io = TestIo::new([]);
+    let mut words = configuration();
+    words[1] |= 1 << 10;
+    io.pci_function(0x1800, words, [0xffffc004, u32::MAX, 0, 0, 0, 0]);
+    {
+        let mut pci = Pci::new(io.ports(0xcf8, 8));
+        pci.enable(0x1800);
+        assert_eq!(pci.read(0x1800, 4) as u16 & ((1 << 10) | 6), 6);
+    }
 }

@@ -27,7 +27,12 @@ impl<'a> Ethernet<'a> {
         }
     }
     pub fn begin_poll(&mut self) {
+        self.nic.begin_poll();
         self.budget = 16;
+    }
+    /// Exclusive foreground access for notification arming and idle control.
+    pub fn network(&mut self) -> &mut Net<'a> {
+        &mut self.nic
     }
     pub fn take_error(&mut self) -> Option<Error> {
         self.failure.take()

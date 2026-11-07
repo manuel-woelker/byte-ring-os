@@ -4,6 +4,7 @@
 #[cfg(feature = "tcp")]
 pub mod ethernet;
 pub mod pci;
+pub mod pic;
 pub mod pit;
 pub mod serial;
 #[cfg(all(test, feature = "test-hal"))]

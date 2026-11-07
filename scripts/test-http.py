@@ -14,7 +14,7 @@ import tempfile
 import threading
 import time
 
-from network_peer import ROOT, GUEST_MAC, PEER_MAC, GUEST_IP, PEER_IP, checksum, arp, echo, receive, send
+from network_peer import ROOT, GUEST_MAC, PEER_MAC, GUEST_IP, PEER_IP, checksum, arp, echo, receive, send, Qmp
 
 SYN, ACK, FIN, RST, PSH = 2, 16, 1, 4, 8
 MASK = 0xffffffff
@@ -188,7 +188,9 @@ def validate(response, status=200, body=None, head=False):
     return fields
 
 
-def exercise(peer):
+def exercise(peer, qmp):
+    qmp.assert_idle()
+    print("Idle: CPU halted before network traffic; no periodic idle tick")
     peer.send(arp())
     reply = peer.receive()
     assert reply[:14] == PEER_MAC + GUEST_MAC + b"\x08\x06"
@@ -197,6 +199,20 @@ def exercise(peer):
     reply = peer.receive()
     assert reply[23] == 1 and reply[34:36] == b"\0\0"
     assert checksum(reply[34:14 + struct.unpack('!H', reply[16:18])[0]]) == 0
+
+    # More RX completions than the adapter's per-poll budget must not be lost
+    # when notifications are rearmed between foreground batches.
+    for sequence in range(24):
+        peer.send(echo(100 + sequence, b"idle-burst"))
+    seen = set()
+    for _ in range(24):
+        frame = peer.receive()
+        assert frame[23] == 1 and frame[34:36] == b"\0\0"
+        sequence, = struct.unpack("!H", frame[40:42])
+        assert 100 <= sequence < 124 and sequence not in seen
+        seen.add(sequence)
+    qmp.assert_idle()
+    print("Wakeup: NIC interrupt and 24-packet RX burst drain successfully")
 
     page = (ROOT / "assets/index.html").read_bytes()
     client = Client(peer)
@@ -248,17 +264,24 @@ def main():
     logs = ROOT / "target/http/integration" / str(time.time_ns())
     logs.mkdir(parents=True)
     with tempfile.TemporaryDirectory(prefix="byte-ring-http-") as directory, \
-            socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+            socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener, \
+            socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as monitor:
         os.chmod(directory, 0o711)
         path = directory + "/net.sock"
         listener.bind(path)
         os.chmod(path, 0o666)
         listener.listen(1)
         listener.settimeout(30)
+        monitor_path = directory + "/qmp.sock"
+        monitor.bind(monitor_path)
+        os.chmod(monitor_path, 0o666)
+        monitor.listen(1)
+        monitor.settimeout(30)
         environment = dict(os.environ, QEMU_SOCKET_DIRECTORY=directory, QEMU_TIMEOUT="60s")
         command = ["./scripts/qemu.sh", "-machine", "pc", "-accel", "tcg", "-cpu", "qemu64",
                    "-m", "64M", "-smp", "1", "-display", "none", "-monitor", "none",
                    "-serial", "stdio", "-no-reboot", "-no-shutdown",
+                   "-qmp", "unix:" + monitor_path + ",server=off",
                    "-netdev", "stream,id=net0,addr.type=unix,addr.path=" + path,
                    "-device", "virtio-net-pci,disable-legacy=on,netdev=net0,mac=52:54:00:12:34:56",
                    "-kernel", "target/http/x86_64-unknown-none/release/byte-ring-kernel.bin"]
@@ -281,13 +304,19 @@ def main():
         print("Logs: " + str(logs), flush=True)
         try:
             connection, _ = listener.accept()
-            with connection, (logs / "packets.log").open("w") as trace:
+            control, _ = monitor.accept()
+            with connection, control, (logs / "packets.log").open("w") as trace:
                 if not ready.wait(15):
                     raise RuntimeError("HTTP guest did not become ready:\n" + "".join(lines))
-                exercise(Peer(connection, trace))
+                qmp = Qmp(control)
+                try:
+                    exercise(Peer(connection, trace), qmp)
+                    qmp.assert_idle()
+                finally:
+                    qmp.close()
                 assert child.poll() is None, "guest exited unexpectedly"
                 assert not any("PANIC" in line or "EXCEPTION" in line for line in lines)
-                (logs / "result.txt").write_text("HTTP responses, TCP loss recovery, deadlines, and reconnect passed.\n")
+                (logs / "result.txt").write_text("IRQ idle/wakeup, burst drain, HTTP responses, TCP loss recovery, deadlines, and reconnect passed.\n")
             print("Task outcome: kernel HTTP and TCP integration passed")
         finally:
             if child.poll() is None:

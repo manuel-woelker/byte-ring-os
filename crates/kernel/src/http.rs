@@ -1,7 +1,10 @@
 //! One boot-owned HTTP connection over a polled, bounded TCP stack.
 use super::{clock, files::BootFiles, net};
 use byte_ring_drivers::ethernet::Ethernet;
-use byte_ring_kernel_core::http::{Request, Response, Status};
+use byte_ring_kernel_core::{
+    http::{Request, Response, Status},
+    idle::{self, CONNECTION_MS, REQUEST_MS},
+};
 use smoltcp::{
     iface::{Config, Interface, SocketSet, SocketStorage},
     socket::tcp::{Socket, SocketBuffer, State},
@@ -10,12 +13,11 @@ use smoltcp::{
 };
 
 const PORT: u16 = 8080;
-const REQUEST_MS: i64 = 5_000;
-const CONNECTION_MS: i64 = 15_000;
 
 pub fn run(files: &mut BootFiles) -> ! {
     let timer = clock::initialize();
-    let nic = net::initialize().unwrap_or_else(|error| panic!("HTTP network: {error}"));
+    let (nic, irq) = net::initialize().unwrap_or_else(|error| panic!("HTTP network: {error}"));
+    let mut sleeper = super::idle::Idle::new(irq);
     let mut config = Config::new(EthernetAddress(nic.mac).into());
     // Development-only seed; this is not a cryptographic entropy source.
     config.random_seed = clock::counter();
@@ -55,6 +57,7 @@ pub fn run(files: &mut BootFiles) -> ! {
         if let Some(error) = device.take_error() {
             panic!("HTTP virtio: {error:?}");
         }
+        let mut progress = false;
         let socket = sockets.get_mut::<Socket>(handle);
         if !socket.is_open() {
             // smoltcp permits listen from CLOSED or TIME-WAIT. A fresh tuple
@@ -64,6 +67,7 @@ pub fn run(files: &mut BootFiles) -> ! {
             position = 0;
             started = None;
             socket.listen(PORT).expect("closed HTTP socket can listen");
+            progress = true;
         }
         if socket.is_active() {
             let start = *started.get_or_insert(now);
@@ -75,7 +79,10 @@ pub fn run(files: &mut BootFiles) -> ! {
                 if socket.can_recv() {
                     let mut bytes = [0; 256];
                     match socket.recv_slice(&mut bytes) {
-                        Ok(length) => response = request.push(&bytes[..length]),
+                        Ok(length) => {
+                            response = request.push(&bytes[..length]);
+                            progress = length > 0;
+                        }
                         Err(_) => {
                             socket.abort();
                             continue;
@@ -93,6 +100,7 @@ pub fn run(files: &mut BootFiles) -> ! {
                         continue;
                     }
                 }
+                progress |= response.is_some();
                 if let Some(response) = &response
                     && log_budget > 0
                 {
@@ -106,7 +114,10 @@ pub fn run(files: &mut BootFiles) -> ! {
             if let Some(response) = &response {
                 if position < response.len() && socket.can_send() {
                     match socket.send_slice(response.chunk(position)) {
-                        Ok(length) => position += length,
+                        Ok(length) => {
+                            position += length;
+                            progress |= length > 0;
+                        }
                         Err(_) => {
                             socket.abort();
                             continue;
@@ -116,9 +127,24 @@ pub fn run(files: &mut BootFiles) -> ! {
                 if position == response.len() && socket.may_send() {
                     // TCP retains queued bytes for ACK/retransmission before FIN.
                     socket.close();
+                    progress = true;
                 }
             }
         }
-        core::hint::spin_loop();
+        if progress {
+            continue;
+        }
+        let now = timer.milliseconds(clock::counter());
+        let next = idle::deadline(
+            interface
+                .poll_at(Instant::from_millis(now), &sockets)
+                .map(|time| time.total_millis()),
+            started,
+            response.is_none(),
+        );
+        let delay = next.map(|deadline| deadline.saturating_sub(now).max(0) as u64);
+        sleeper
+            .wait(device.network(), delay)
+            .unwrap_or_else(|error| panic!("HTTP idle: {error:?}"));
     }
 }

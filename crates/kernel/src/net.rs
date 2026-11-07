@@ -76,7 +76,7 @@ impl fmt::Display for InitError {
     }
 }
 
-pub(super) fn initialize() -> Result<Net<'static>, InitError> {
+pub(super) fn initialize() -> Result<(Net<'static>, u8), InitError> {
     // SAFETY: one CPU at CPL0, interrupts disabled, no other PCI or DMA owner.
     unsafe {
         let mut pci = Pci::new(PortRange::new(0xcf8, 8));
@@ -97,12 +97,14 @@ pub(super) fn initialize() -> Result<Net<'static>, InitError> {
             rx,
             tx,
         )
+        .map(|net| (net, device.irq))
         .map_err(InitError::Device)
     }
 }
 #[cfg(not(feature = "http"))]
 pub fn run(files: &mut BootFiles) -> ! {
-    let mut nic = initialize().unwrap_or_else(|error| panic!("network: {error}"));
+    let (mut nic, irq) = initialize().unwrap_or_else(|error| panic!("network: {error}"));
+    let mut idle = super::idle::Idle::new(irq);
     let network = Network {
         ip: IP,
         mac: nic.mac,
@@ -120,6 +122,7 @@ pub fn run(files: &mut BootFiles) -> ! {
     let mut full = 0u64;
     let mut suppressed = 0u64;
     loop {
+        nic.begin_poll();
         let mut log_budget = 1;
         for _ in 0..16 {
             let length = match nic.receive(&mut input) {
@@ -167,6 +170,7 @@ pub fn run(files: &mut BootFiles) -> ! {
                 }
             }
         }
-        core::hint::spin_loop();
+        idle.wait(&mut nic, None)
+            .unwrap_or_else(|error| panic!("network idle: {error:?}"));
     }
 }

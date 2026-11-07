@@ -12,7 +12,7 @@ recipe "default" {
     run shell="./t cargo check -p byte-ring-kernel-core -p byte-ring-hal -p byte-ring-drivers --features byte-ring-drivers/test-hal,byte-ring-drivers/tcp --all-targets"
   }
   task "cargo-clippy" description="Lint portable kernel code" {
-    run shell="./scripts/build-kernel.sh --network --clippy"
+    run shell="./t clippy clippy -p byte-ring-kernel-core -p byte-ring-hal -p byte-ring-drivers --features byte-ring-drivers/test-hal,byte-ring-drivers/tcp --all-targets -- -D warnings"
   }
   task "cargo-test" description="Run host tests with nextest" {
     run shell="./t cargo-nextest nextest run -p byte-ring-kernel-core -p byte-ring-hal -p byte-ring-drivers --features byte-ring-drivers/test-hal,byte-ring-drivers/tcp"
@@ -42,7 +42,7 @@ recipe "default" {
   }
   task "network-clippy" description="Lint the native network-enabled kernel" {
     depends-on "net-test"
-    run shell="./t clippy clippy -p byte-ring-kernel --features network --target x86_64-unknown-none --release --config 'target.x86_64-unknown-none.rustflags=[\"--sysroot\", \".cache/kernel-sysroot/1.99.0\", \"-C\", \"relocation-model=static\", \"-C\", \"link-arg=-Tcrates/kernel/linker.ld\"]' -- -D warnings"
+    run shell="./scripts/build-kernel.sh --network --clippy"
   }
   task "http-clippy" description="Lint the native HTTP kernel and TCP stack adapter" {
     run shell="./scripts/build-kernel.sh --http --clippy"

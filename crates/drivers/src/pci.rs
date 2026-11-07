@@ -9,6 +9,7 @@ pub enum Error {
     Bar,
     Window,
     Unsupported,
+    Interrupt,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -20,6 +21,7 @@ pub struct Window {
 #[derive(Debug, Clone, Copy)]
 pub struct Transport {
     pub bdf: u32,
+    pub irq: u8,
     pub common: Window,
     pub notify: Window,
     pub isr: Window,
@@ -60,7 +62,7 @@ impl<'a> Pci<'a> {
     }
     pub fn enable(&mut self, bdf: u32) {
         let command = self.read(bdf, 4) as u16;
-        self.command(bdf, command | 6 | (1 << 10));
+        self.command(bdf, (command | 6) & !(1 << 10));
     }
     pub fn discover(&mut self) -> Result<Transport, Error> {
         for bus in 0..256u32 {
@@ -150,6 +152,11 @@ impl<'a> Pci<'a> {
         if self.read(bdf, 4) & (1 << 20) == 0 {
             return Err(Error::Capabilities);
         }
+        let irq = self.byte(bdf, 0x3c);
+        let pin = self.byte(bdf, 0x3d);
+        if !(1..=4).contains(&pin) || !crate::pic::valid_network_irq(irq) {
+            return Err(Error::Interrupt);
+        }
         let bars = self.bars(bdf)?;
         let mut regions = [None; 4];
         let mut multiplier = 0;
@@ -223,6 +230,7 @@ impl<'a> Pci<'a> {
         }
         Ok(Transport {
             bdf,
+            irq,
             common,
             notify,
             isr,

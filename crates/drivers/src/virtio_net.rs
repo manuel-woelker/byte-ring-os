@@ -128,6 +128,27 @@ impl<'a> Net<'a> {
         net.notify.write_u16(net.offsets[0], 0);
         Ok(net)
     }
+    /// Suppress notifications and deassert INTx before foreground processing.
+    pub fn begin_poll(&mut self) {
+        self.rx.suppress_interrupts();
+        self.tx.suppress_interrupts();
+        let _ = self.isr.read_u8(0);
+    }
+    /// Arm both queues and recheck ownership after the notification barrier.
+    /// Returns false when a completion already requires another poll.
+    pub fn prepare_sleep(&mut self) -> Result<bool, Error> {
+        if self.common.read_u8(20) & 0xc0 != 0 {
+            return Err(Error::Configuration);
+        }
+        let _ = self.isr.read_u8(0);
+        let rx_pending = self.rx.arm_interrupts().map_err(Error::Queue)?;
+        let tx_pending = self.tx.arm_interrupts().map_err(Error::Queue)?;
+        if rx_pending || tx_pending {
+            self.begin_poll();
+            return Ok(false);
+        }
+        Ok(true)
+    }
     pub fn receive(&mut self, output: &mut [u8]) -> Result<Option<usize>, Error> {
         if self.common.read_u8(20) & 0xc0 != 0 {
             return Err(Error::Configuration);
