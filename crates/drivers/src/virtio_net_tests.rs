@@ -45,3 +45,28 @@ fn initialization_programs_split_queue_addresses_and_driver_ok() {
     net.transmit(b"packet").unwrap();
     assert_eq!(net.notify.read_u16(4), 1);
 }
+
+#[cfg(feature = "tcp")]
+#[test]
+fn stack_tokens_apply_backpressure_and_report_device_failure() {
+    use crate::ethernet::Ethernet;
+    use smoltcp::{
+        phy::{Device, TxToken},
+        time::Instant,
+    };
+    let mut adapter = Ethernet::new(initialize(0x21, 32, 1).unwrap());
+    for _ in 0..32 {
+        adapter
+            .transmit(Instant::ZERO)
+            .unwrap()
+            .consume(60, |packet| packet.fill(0));
+    }
+    assert!(adapter.transmit(Instant::ZERO).is_none());
+    assert!(adapter.take_error().is_none());
+
+    let mut nic = initialize(0x21, 32, 1).unwrap();
+    nic.common.write_u8(20, 0x80);
+    let mut adapter = Ethernet::new(nic);
+    assert!(adapter.transmit(Instant::ZERO).is_none());
+    assert!(matches!(adapter.take_error(), Some(Error::Configuration)));
+}

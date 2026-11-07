@@ -19,8 +19,10 @@ fn tx_exhaustion_completion_and_reuse() {
     for _ in 0..32 {
         q.transmit(b"packet").unwrap();
     }
+    assert!(!q.can_transmit().unwrap());
     assert_eq!(q.transmit(b"full"), Err(Error::Full));
     complete(&mut q, 3, 0);
+    assert!(q.can_transmit().unwrap());
     q.transmit(b"reused").unwrap();
     assert!(q.owned[3]);
     assert_eq!(q.used, 1);

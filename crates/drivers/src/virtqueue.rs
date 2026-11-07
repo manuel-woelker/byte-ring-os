@@ -128,6 +128,11 @@ impl<'a> Queue<'a> {
         }
         Ok(())
     }
+    /// Reclaims completions before reporting available TX capacity.
+    pub fn can_transmit(&mut self) -> Result<bool, Error> {
+        self.reclaim()?;
+        Ok(self.owned[..self.size as usize].iter().any(|owned| !owned))
+    }
     pub fn transmit(&mut self, packet: &[u8]) -> Result<(), Error> {
         if self.receive || self.poisoned {
             return Err(Error::Corrupt);

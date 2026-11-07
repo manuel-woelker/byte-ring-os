@@ -12,6 +12,7 @@ bench = false
 
 [features]
 network = []
+http = ["network", "dep:smoltcp", "byte-ring-drivers/tcp"]
 qemu-test = []
 qemu-vm-errors = ["qemu-test"]
 qemu-divide = ["qemu-test"]
@@ -25,3 +26,4 @@ qemu-panic = ["qemu-test"]
 byte-ring-kernel-core = { path = "../kernel-core" }
 byte-ring-hal = { path = "../hal" }
 byte-ring-drivers = { path = "../drivers" }
+smoltcp = { workspace = true, optional = true }

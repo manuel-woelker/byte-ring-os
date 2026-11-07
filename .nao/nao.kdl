@@ -9,16 +9,16 @@ recipe "default" {
     run shell="./t rumdl check ."
   }
   task "cargo-check" description="Check portable kernel code on the host" {
-    run shell="./t cargo check -p byte-ring-kernel-core -p byte-ring-hal -p byte-ring-drivers --features byte-ring-drivers/test-hal --all-targets"
+    run shell="./t cargo check -p byte-ring-kernel-core -p byte-ring-hal -p byte-ring-drivers --features byte-ring-drivers/test-hal,byte-ring-drivers/tcp --all-targets"
   }
   task "cargo-clippy" description="Lint portable kernel code" {
-    run shell="./t clippy clippy -p byte-ring-kernel-core -p byte-ring-hal -p byte-ring-drivers --features byte-ring-drivers/test-hal --all-targets -- -D warnings"
+    run shell="./scripts/build-kernel.sh --network --clippy"
   }
   task "cargo-test" description="Run host tests with nextest" {
-    run shell="./t cargo-nextest nextest run -p byte-ring-kernel-core -p byte-ring-hal -p byte-ring-drivers --features byte-ring-drivers/test-hal"
+    run shell="./t cargo-nextest nextest run -p byte-ring-kernel-core -p byte-ring-hal -p byte-ring-drivers --features byte-ring-drivers/test-hal,byte-ring-drivers/tcp"
   }
   task "cargo-doc-test" description="Run Rust documentation tests" {
-    run shell="./t cargo test -p byte-ring-kernel-core -p byte-ring-hal -p byte-ring-drivers --features byte-ring-drivers/test-hal --doc"
+    run shell="./t cargo test -p byte-ring-kernel-core -p byte-ring-hal -p byte-ring-drivers --features byte-ring-drivers/test-hal,byte-ring-drivers/tcp --doc"
   }
   task "build-kernel" description="Build the freestanding x86_64 kernel ELF" {
     run shell="./scripts/build-kernel.sh"
@@ -36,6 +36,9 @@ recipe "default" {
   task "network-clippy" description="Lint the native network-enabled kernel" {
     depends-on "net-test"
     run shell="./t clippy clippy -p byte-ring-kernel --features network --target x86_64-unknown-none --release --config 'target.x86_64-unknown-none.rustflags=[\"--sysroot\", \".cache/kernel-sysroot/1.99.0\", \"-C\", \"relocation-model=static\", \"-C\", \"link-arg=-Tcrates/kernel/linker.ld\"]' -- -D warnings"
+  }
+  task "http-clippy" description="Lint the native HTTP kernel and TCP stack adapter" {
+    run shell="./scripts/build-kernel.sh --http --clippy"
   }
   task "net-test" description="Verify virtio-net ARP and static IPv4 ping in QEMU" {
     depends-on "build-kernel"
@@ -65,6 +68,7 @@ recipe "default" {
     depends-on "qemu-test"
     depends-on "check-hal-config"
     depends-on "network-clippy"
+    depends-on "http-clippy"
     run shell="printf 'Task outcome: repository checks passed\n'"
   }
   task "ci" description="Run continuous integration checks" {

@@ -40,7 +40,7 @@ The HAL isolates port and DMA operations and has an explicit host test backend.
 
 - [x] Record the HTTP/TCP decision and implement portable HTTP parsing,
   response formatting, embedded page, and clock conversion with host tests.
-- [ ] Add the pinned TCP stack, safe virtio adapter, hardware clock, and
+- [x] Add the pinned TCP stack, safe virtio adapter, hardware clock, and
   separate HTTP kernel image with bounded connection lifecycle handling.
 - [ ] Add `http-test` and `run-http` tasks, independent packet-level QEMU
   verification, and usage documentation.
@@ -79,4 +79,7 @@ explicit. No open question blocks this initial implementation.
 
 Portable HTTP and clock conversion are implemented. See
 [DR-006](<../decisions/DR-006 Serve a bounded HTTP endpoint using smoltcp.md>).
-HEAD is supported alongside GET to permit `curl -I`. TCP integration is next.
+HEAD is supported alongside GET to permit `curl -I`. The HTTP image boots in
+QEMU and reports readiness after PIT calibration. The pinned Rust wrapper now
+supplies the host sysroot for dependency build scripts; native dependency flags
+use absolute paths. Packet-level verification and host tasks are next.

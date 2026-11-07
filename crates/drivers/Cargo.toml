@@ -5,7 +5,9 @@ edition.workspace = true
 publish.workspace = true
 
 [features]
+tcp = ["dep:smoltcp"]
 test-hal = ["byte-ring-hal/test-hal"]
 
 [dependencies]
 byte-ring-hal = { path = "../hal" }
+smoltcp = { workspace = true, optional = true }

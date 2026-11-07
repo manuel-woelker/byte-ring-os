@@ -1,19 +1,18 @@
 //! Single-CPU polled network host; logs ordinary requests through stdout WRITE.
 
 use super::files::BootFiles;
-use byte_ring_drivers::{
-    pci::Pci,
-    virtio_net::Net,
-    virtqueue::{DMA_SIZE, Error as QueueError},
-};
+#[cfg(not(feature = "http"))]
+use byte_ring_drivers::virtqueue::Error as QueueError;
+use byte_ring_drivers::{pci::Pci, virtio_net::Net, virtqueue::DMA_SIZE};
 use byte_ring_hal::{memory::Memory, port::PortRange};
+#[cfg(not(feature = "http"))]
+use byte_ring_kernel_core::network::{MAX_FRAME, Network};
 use byte_ring_kernel_core::{
     bytecode::{
         builder::ProgramBuilder,
         vm::{Limits, execute},
     },
     file::STDOUT,
-    network::{MAX_FRAME, Network},
 };
 use core::{
     cell::UnsafeCell,
@@ -43,7 +42,7 @@ impl Write for Text {
         Ok(())
     }
 }
-fn log(files: &mut BootFiles, args: fmt::Arguments<'_>) {
+pub(super) fn log(files: &mut BootFiles, args: fmt::Arguments<'_>) {
     let mut text = Text {
         bytes: [0; 256],
         length: 0,
@@ -62,7 +61,7 @@ fn log(files: &mut BootFiles, args: fmt::Arguments<'_>) {
     }
 }
 
-enum InitError {
+pub(super) enum InitError {
     Pci(byte_ring_drivers::pci::Error),
     Mapping(&'static str),
     Device(byte_ring_drivers::virtio_net::Error),
@@ -77,7 +76,7 @@ impl fmt::Display for InitError {
     }
 }
 
-fn initialize() -> Result<Net<'static>, InitError> {
+pub(super) fn initialize() -> Result<Net<'static>, InitError> {
     // SAFETY: one CPU at CPL0, interrupts disabled, no other PCI or DMA owner.
     unsafe {
         let mut pci = Pci::new(PortRange::new(0xcf8, 8));
@@ -101,6 +100,7 @@ fn initialize() -> Result<Net<'static>, InitError> {
         .map_err(InitError::Device)
     }
 }
+#[cfg(not(feature = "http"))]
 pub fn run(files: &mut BootFiles) -> ! {
     let mut nic = initialize().unwrap_or_else(|error| panic!("network: {error}"));
     let network = Network {

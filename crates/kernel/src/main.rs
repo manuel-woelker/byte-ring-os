@@ -2,9 +2,13 @@
 #![no_main]
 
 mod boot;
+#[cfg(feature = "http")]
+mod clock;
 mod debug;
 mod exceptions;
 mod files;
+#[cfg(feature = "http")]
+mod http;
 #[cfg(feature = "network")]
 mod mmio;
 #[cfg(feature = "network")]
@@ -31,7 +35,14 @@ extern "C" fn kernel_main() -> ! {
         if let Err(error) = result {
             panic!("boot bytecode failed: {error:?}");
         }
-        net::run(&mut files)
+        #[cfg(feature = "http")]
+        {
+            http::run(&mut files)
+        }
+        #[cfg(not(feature = "http"))]
+        {
+            net::run(&mut files)
+        }
     }
     #[cfg(all(not(feature = "network"), feature = "qemu-test"))]
     {

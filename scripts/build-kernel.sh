@@ -9,7 +9,10 @@ if [[ ! -f "${sysroot}/lib/rustlib/x86_64-unknown-none/lib/libcore.rlib" ]] &&
 fi
 build_arguments=()
 image_directory="target/x86_64-unknown-none/release"
-if [[ "${1:-}" == "--network" ]]; then
+if [[ "${1:-}" == "--http" ]]; then
+  build_arguments+=(--features http --target-dir target/http)
+  image_directory="target/http/x86_64-unknown-none/release"
+elif [[ "${1:-}" == "--network" ]]; then
   build_arguments+=(--features network --target-dir target/network)
   image_directory="target/network/x86_64-unknown-none/release"
 elif [[ "${1:-}" == "--qemu-test" ]]; then
@@ -23,12 +26,16 @@ elif [[ "${1:-}" == "--qemu-test" ]]; then
   build_arguments+=(--features "${features}" --target-dir "target/qemu-test/${test_case}")
   image_directory="target/qemu-test/${test_case}/x86_64-unknown-none/release"
 elif [[ "$#" != 0 ]]; then
-  printf 'Usage: %s [--qemu-test [case]]\n' "$0" >&2
+  printf 'Usage: %s [--network | --http | --qemu-test [case]]\n' "$0" >&2
   exit 2
 fi
-./t cargo build -p byte-ring-kernel --bin byte-ring-kernel \
-  --target x86_64-unknown-none --release "${build_arguments[@]}" \
-  --config 'target.x86_64-unknown-none.rustflags=["--sysroot", ".cache/kernel-sysroot/1.99.0", "-C", "relocation-model=static", "-C", "link-arg=-Tcrates/kernel/linker.ld"]'
-
-./t llvm-objcopy -O binary "${image_directory}/byte-ring-kernel" \
-  "${image_directory}/byte-ring-kernel.bin"
+cargo_arguments=(-p byte-ring-kernel --bin byte-ring-kernel
+  --target x86_64-unknown-none --release "${build_arguments[@]}"
+  --config "target.x86_64-unknown-none.rustflags=[\"--sysroot\", \"${sysroot}\", \"-C\", \"relocation-model=static\", \"-C\", \"link-arg=-T${repository_root}/crates/kernel/linker.ld\"]")
+if [[ "${2:-}" == "--clippy" ]]; then
+  ./t clippy clippy "${cargo_arguments[@]}" -- -D warnings
+else
+  ./t cargo build "${cargo_arguments[@]}"
+  ./t llvm-objcopy -O binary "${image_directory}/byte-ring-kernel" \
+    "${image_directory}/byte-ring-kernel.bin"
+fi

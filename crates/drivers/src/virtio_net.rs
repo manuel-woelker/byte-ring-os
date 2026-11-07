@@ -140,6 +140,13 @@ impl<'a> Net<'a> {
         }
         Ok(packet)
     }
+    /// Availability remains valid until the next transmit on this exclusive owner.
+    pub fn can_transmit(&mut self) -> Result<bool, Error> {
+        if self.common.read_u8(20) & 0xc0 != 0 {
+            return Err(Error::Configuration);
+        }
+        self.tx.can_transmit().map_err(Error::Queue)
+    }
     pub fn transmit(&mut self, packet: &[u8]) -> Result<(), Error> {
         self.tx.transmit(packet).map_err(Error::Queue)?;
         self.notify.write_u16(self.offsets[1], 1);

@@ -1,0 +1,10 @@
+#!/bin/bash
+# The pinned Rust archive keeps rustc and host std in separate components.
+# Cargo build scripts do not inherit target rustflags, so supply their sysroot.
+set -euo pipefail
+for argument in "$@"; do
+  if [[ "${argument}" == --sysroot || "${argument}" == --sysroot=* ]]; then
+    exec "${BYTE_RING_RUSTC}" "$@"
+  fi
+done
+exec "${BYTE_RING_RUSTC}" --sysroot "${BYTE_RING_HOST_SYSROOT}" "$@"

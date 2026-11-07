@@ -85,9 +85,37 @@ limits, and
 [DR-005](<decisions/DR-005 Use polled virtio networking with static IPv4.md>)
 for decisions. The rootless Unix-stream test verifies packets independently;
 host TAP ping is an optional separate workflow. Ordinary boot/fault images do
-not require a NIC. TCP/UDP, general sockets, and application networking are
+not require a NIC. UDP, general sockets, and application networking are
 unimplemented. Polling consumes idle CPU; device-driven sleep remains future
 work.
+
+## HTTP image
+
+The separate `http` feature uses the same native virtio device with pinned
+[smoltcp](https://github.com/smoltcp-rs/smoltcp) 0.14.0 for Ethernet, IPv4,
+TCP, and ICMP echo replies. Default features, heap allocation, offloads, and
+fragment reassembly are disabled. A safe driver adapter copies frames into
+private buffers, checks TX capacity before offering tokens, and reports device
+failures to the kernel. Each interface poll accepts at most 16 frames.
+
+A single boot-owned socket listens at `192.0.2.2:8080` with 2048-byte RX and
+1024-byte TX storage. Portable kernel-core code parses at most 1024 header
+bytes and selects an embedded page for GET or HEAD `/`. HTTP/1.1 requires Host;
+HTTP/1.0 is supported. Responses carry exact Content-Length and close the
+connection. Unsupported bodies and ambiguous framing produce errors. Partial
+reads/writes, FIN, disconnect, and socket reuse are explicit in the kernel loop.
+
+Request headers have a five-second deadline from TCP activity, and the whole
+connection has a fifteen-second limit. The boot CPU calibrates its TSC against
+PIT channel 2 through HAL port access; conversion to milliseconds is portable.
+This clock assumes the supported single-core QEMU PC. Ordinary response logs use
+stdout WRITE and stop after 64 messages; device faults use fatal diagnostics.
+
+The service has no application socket ABI or isolation from the kernel. It is
+an experimental development endpoint, without TLS, persistent connections,
+request bodies, routing, or production entropy. See
+[DR-006](<decisions/DR-006 Serve a bounded HTTP endpoint using smoltcp.md>) for
+the dependency and ownership decision.
 
 ## Intended interaction model
 
