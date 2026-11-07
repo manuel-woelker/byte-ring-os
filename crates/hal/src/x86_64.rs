@@ -13,6 +13,35 @@ impl Io<'static> {
 }
 
 impl Io<'_> {
+    pub(crate) fn read_u16(&mut self, address: u16) -> u16 {
+        let value;
+        // SAFETY: the owning PortRange checks privilege, range, and width.
+        unsafe {
+            asm!("in ax, dx", in("dx") address, out("ax") value, options(nostack, preserves_flags));
+        }
+        value
+    }
+    pub(crate) fn read_u32(&mut self, address: u16) -> u32 {
+        let value;
+        // SAFETY: the owning PortRange checks privilege, range, and width.
+        unsafe {
+            asm!("in eax, dx", in("dx") address, out("eax") value, options(nostack, preserves_flags));
+        }
+        value
+    }
+    pub(crate) fn write_u16(&mut self, address: u16, value: u16) {
+        // SAFETY: the owning PortRange checks privilege, range, and width.
+        unsafe {
+            asm!("out dx, ax", in("dx") address, in("ax") value, options(nostack, preserves_flags));
+        }
+    }
+    pub(crate) fn write_u32(&mut self, address: u16, value: u32) {
+        // SAFETY: the owning PortRange checks privilege, range, and width.
+        unsafe {
+            asm!("out dx, eax", in("dx") address, in("eax") value, options(nostack, preserves_flags));
+        }
+    }
+
     #[inline]
     pub(crate) fn read_u8(&mut self, address: u16) -> u8 {
         let value: u8;

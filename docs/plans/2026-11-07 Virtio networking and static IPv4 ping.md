@@ -1,6 +1,7 @@
 # Virtio networking and static IPv4 ping
 
-Status: planned; implementation has not started.
+Status: implementing. Decisions are recorded in
+[DR-005](<../decisions/DR-005 Use polled virtio networking with static IPv4.md>).
 
 ## Goal and scope
 
@@ -182,9 +183,9 @@ TAP workflow rather than broadening container privileges.
 
 ## Implementation checklist
 
-- [ ] Record the modern virtio transport, static DMA, mapping, polling, and
+- [x] Record the modern virtio transport, static DMA, mapping, polling, and
       topology decisions in `docs/decisions/`; link the record here.
-- [ ] Extend HAL access widths/MMIO and test backends; verify bounds, alignment,
+- [x] Extend HAL access widths/MMIO and test backends; verify bounds, alignment,
       access ordering, and independent test state.
 - [ ] Add PCI discovery/capability validation and bounded MMIO mappings without
       changing unrelated boot behavior.

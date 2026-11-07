@@ -66,6 +66,41 @@ impl<'a> PortRange<'a> {
         self.io.write_u8(address, value);
     }
 
+    /// Read an aligned 16-bit port within the owned range.
+    pub fn read_u16(&mut self, offset: u16) -> u16 {
+        let address = self.wide_address(offset, 2);
+        self.io.read_u16(address)
+    }
+
+    /// Read an aligned 32-bit port within the owned range.
+    pub fn read_u32(&mut self, offset: u16) -> u32 {
+        let address = self.wide_address(offset, 4);
+        self.io.read_u32(address)
+    }
+
+    /// Write an aligned 16-bit port within the owned range.
+    pub fn write_u16(&mut self, offset: u16, value: u16) {
+        let address = self.wide_address(offset, 2);
+        self.io.write_u16(address, value);
+    }
+
+    /// Write an aligned 32-bit port within the owned range.
+    pub fn write_u32(&mut self, offset: u16, value: u32) {
+        let address = self.wide_address(offset, 4);
+        self.io.write_u32(address, value);
+    }
+
+    fn wide_address(&self, offset: u16, width: u16) -> u16 {
+        assert!(
+            offset
+                .checked_add(width)
+                .is_some_and(|end| end <= self.length)
+        );
+        let address = self.base + offset;
+        assert_eq!(address % width, 0, "unaligned port access");
+        address
+    }
+
     #[inline]
     fn address(&self, offset: u16) -> u16 {
         assert!(offset < self.length, "port offset outside owned range");

@@ -12,6 +12,8 @@ use crate::port::PortRange;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Operation {
     Read { address: u16, value: u8 },
+    ReadWide { address: u16, width: u8, value: u32 },
+    WriteWide { address: u16, width: u8, value: u32 },
     Write { address: u16, value: u8 },
 }
 
@@ -19,6 +21,7 @@ pub enum Operation {
 pub struct TestIo {
     reads: RefCell<VecDeque<(u16, u8)>>,
     operations: RefCell<Vec<Operation>>,
+    wide_reads: RefCell<VecDeque<(u16, u8, u32)>>,
 }
 
 impl TestIo {
@@ -27,7 +30,13 @@ impl TestIo {
         Self {
             reads: RefCell::new(reads.into_iter().collect()),
             operations: RefCell::new(Vec::new()),
+            wide_reads: RefCell::new(VecDeque::new()),
         }
+    }
+
+    /// Supply width-aware PCI configuration reads.
+    pub fn expect_wide(&mut self, reads: impl IntoIterator<Item = (u16, u8, u32)>) {
+        self.wide_reads.get_mut().extend(reads);
     }
 
     /// Borrow this test's state exclusively through a bounded port handle.
@@ -46,6 +55,7 @@ impl TestIo {
     /// Assert that the driver performed every supplied read.
     pub fn assert_reads_consumed(&self) {
         assert!(self.reads.borrow().is_empty(), "unconsumed scripted reads");
+        assert!(self.wide_reads.borrow().is_empty(), "unconsumed wide reads");
     }
 }
 
@@ -54,6 +64,51 @@ pub(crate) struct Io<'a> {
 }
 
 impl Io<'_> {
+    fn read_wide(&mut self, address: u16, width: u8) -> u32 {
+        let (expected, expected_width, value) = self
+            .state
+            .wide_reads
+            .borrow_mut()
+            .pop_front()
+            .expect("unexpected wide read");
+        assert_eq!((address, width), (expected, expected_width));
+        self.state
+            .operations
+            .borrow_mut()
+            .push(Operation::ReadWide {
+                address,
+                width,
+                value,
+            });
+        value
+    }
+    pub(crate) fn read_u16(&mut self, address: u16) -> u16 {
+        self.read_wide(address, 2) as u16
+    }
+    pub(crate) fn read_u32(&mut self, address: u16) -> u32 {
+        self.read_wide(address, 4)
+    }
+    pub(crate) fn write_u16(&mut self, address: u16, value: u16) {
+        self.state
+            .operations
+            .borrow_mut()
+            .push(Operation::WriteWide {
+                address,
+                width: 2,
+                value: value as u32,
+            });
+    }
+    pub(crate) fn write_u32(&mut self, address: u16, value: u32) {
+        self.state
+            .operations
+            .borrow_mut()
+            .push(Operation::WriteWide {
+                address,
+                width: 4,
+                value,
+            });
+    }
+
     pub(crate) fn read_u8(&mut self, address: u16) -> u8 {
         let (expected_address, value) = self
             .state
