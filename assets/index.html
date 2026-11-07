@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Byte Ring OS</title>
+<style>
+  :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #101820; color: #e8f0f5; }
+  body { max-width: 48rem; margin: 10vh auto; padding: 0 1.5rem; line-height: 1.7; }
+  h1 { font-size: clamp(2rem, 6vw, 4rem); line-height: 1.1; color: #7ce8c3; }
+  code { color: #7ce8c3; }
+  .status { display: inline-block; padding: .3rem .8rem; border: 1px solid #7ce8c3; border-radius: 2rem; }
+  footer { border-top: 1px solid #33434f; margin-top: 3rem; padding-top: 1rem; color: #a4b6c4; }
+</style>
+<body>
+<p class="status">Kernel online · HTTP ready</p>
+<h1>Hello from Byte Ring OS.</h1>
+<p>This page is served directly from memory by an experimental Rust kernel.
+There is no disk, userspace web server, or operating system underneath it.</p>
+<h2>A small experiment with a different interface</h2>
+<p>The project explores submission and completion ring buffers carrying bounded
+bytecode programs. The goal is to make application interactions with the kernel
+more efficient, safe, reliable, and extensible. Those application queues are an
+architectural direction; this first HTTP endpoint runs inside the kernel.</p>
+<h2>From Ethernet to your browser</h2>
+<p>A modern virtio network device moves Ethernet frames through bounded DMA
+queues. A polled TCP/IP stack handles delivery, acknowledgements, retransmission,
+and connection shutdown. A small HTTP parser selects this immutable page and
+sends it with an exact content length, then closes the connection.</p>
+<p>Hardware access uses a compile-time hardware abstraction layer, so portable
+logic can be tested on the host without privileged instructions. The kernel
+needs no heap allocation, scheduler, filesystem, or interrupts to serve this
+page. Fixed request and socket buffers make its initial limits explicit.</p>
+<footer>Byte Ring OS · Rust · virtio-net · smoltcp · One connection, one page,
+one useful step toward a larger experiment.</footer>
+</body>
+</html>

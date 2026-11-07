@@ -7,9 +7,10 @@ the existing modern virtio-net device. Provide a host TAP task and an automated
 rootless QEMU integration test. This is an experimental kernel service; it
 does not establish an application socket or bytecode networking ABI.
 
-Start with one connection, bounded storage, GET, HTTP/1.0 and HTTP/1.1, and
-connection close after every response. No filesystem, allocation, TLS, HTTP/2,
-request bodies, persistent connections, DHCP, DNS, routing, or concurrency.
+Start with one connection, bounded storage, GET and HEAD, HTTP/1.0 and HTTP/1.1,
+and connection close after every response. No filesystem, allocation, TLS,
+HTTP/2, request bodies, persistent connections, DHCP, DNS, routing, or
+concurrency.
 
 ## Foundation and design
 
@@ -37,7 +38,7 @@ The HAL isolates port and DMA operations and has an explicit host test backend.
 
 ## Implementation checklist
 
-- [ ] Record the HTTP/TCP decision and implement portable HTTP parsing,
+- [x] Record the HTTP/TCP decision and implement portable HTTP parsing,
   response formatting, embedded page, and clock conversion with host tests.
 - [ ] Add the pinned TCP stack, safe virtio adapter, hardware clock, and
   separate HTTP kernel image with bounded connection lifecycle handling.
@@ -76,4 +77,6 @@ explicit. No open question blocks this initial implementation.
 
 ## Results
 
-Pending implementation.
+Portable HTTP and clock conversion are implemented. See
+[DR-006](<../decisions/DR-006 Serve a bounded HTTP endpoint using smoltcp.md>).
+HEAD is supported alongside GET to permit `curl -I`. TCP integration is next.
