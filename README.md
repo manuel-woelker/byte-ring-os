@@ -40,6 +40,7 @@ standard library are pinned together at 1.99.0.
 ```sh
 ./n check          # Formatting, host tests, kernel build, and QEMU test
 ./n format         # Apply Rust and Markdown formatting
+./n demo-errors    # Show six real CPU fault/panic cases live, then exit
 ./n run            # Build and boot QEMU with live COM1 output; Ctrl+C stops it
 ./n build-kernel   # Build the kernel ELF and Multiboot .bin image
 ./n qemu-test      # Check boot output, CPU fault diagnostics, and panic output

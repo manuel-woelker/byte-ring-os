@@ -27,6 +27,9 @@ recipe "default" {
     depends-on "build-kernel"
     run shell="./scripts/run-qemu.sh"
   }
+  task "demo-errors" description="Show CPU fault and panic diagnostics live in QEMU" direct-output=#true {
+    run shell="./scripts/demo-errors.sh"
+  }
   task "check-hal-config" description="Reject host native I/O and bare-metal test HALs" {
     depends-on "build-kernel"
     run shell="./scripts/check-hal-config.sh"

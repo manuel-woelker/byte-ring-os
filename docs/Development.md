@@ -28,6 +28,12 @@ enabled so Nao does not buffer the console until QEMU exits. It uses system
 QEMU when available and otherwise the same container fallback as the tests.
 The shared launcher removes its container when the run stops.
 
+Use `./n demo-errors` to watch divide errors, invalid opcodes, general
+protection faults, page faults, double faults, and a Rust panic. Each case
+builds its own fault-injection image, prints the report live, validates the
+guest's result, and exits automatically before the next demonstration. Each
+guest has a 20-second timeout. Normal kernel images are unaffected.
+
 ## Verification strategy
 
 Driver and HAL host tests run with `--features byte-ring-drivers/test-hal`.
