@@ -33,6 +33,13 @@ recipe "default" {
   task "run-net" description="Boot static IPv4 guest on a preconfigured host TAP" direct-output=#true {
     run shell="./scripts/run-network.sh"
   }
+  task "run-http" description="Serve the embedded page over a preconfigured host TAP" direct-output=#true {
+    run shell="./scripts/run-network.sh --http"
+  }
+  task "http-test" description="Verify HTTP and TCP recovery with an independent QEMU peer" {
+    depends-on "build-kernel"
+    run shell="python3 ./scripts/test-http.py"
+  }
   task "network-clippy" description="Lint the native network-enabled kernel" {
     depends-on "net-test"
     run shell="./t clippy clippy -p byte-ring-kernel --features network --target x86_64-unknown-none --release --config 'target.x86_64-unknown-none.rustflags=[\"--sysroot\", \".cache/kernel-sysroot/1.99.0\", \"-C\", \"relocation-model=static\", \"-C\", \"link-arg=-Tcrates/kernel/linker.ld\"]' -- -D warnings"
@@ -69,6 +76,7 @@ recipe "default" {
     depends-on "check-hal-config"
     depends-on "network-clippy"
     depends-on "http-clippy"
+    depends-on "http-test"
     run shell="printf 'Task outcome: repository checks passed\n'"
   }
   task "ci" description="Run continuous integration checks" {

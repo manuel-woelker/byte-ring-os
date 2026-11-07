@@ -1,8 +1,9 @@
 # Networking
 
 The network image provides a polled modern PCI virtio-net device with static
-IPv4, ARP replies, and ICMP echo replies. It has no TCP/UDP sockets, DHCP, DNS,
-IPv6, routing, fragmentation, or application-facing network API yet.
+IPv4, ARP replies, and ICMP echo replies. A separate HTTP image adds TCP for
+a kernel-hosted static page. Neither image has DHCP, DNS, IPv6, routing,
+fragment reassembly, or an application-facing network API.
 
 | Setting | Value |
 | --- | --- |
@@ -112,6 +113,66 @@ Host TAP ping was verified with QEMU 11.1.3: four requests received four
 replies with no packet loss. The unprivileged packet path remains in the normal
 check suite so CI does not need a configured TAP.
 
+## HTTP from the host
+
+Use the same preconfigured TAP and host prerequisites described above. Stop
+`run-net` before starting the HTTP image; only one guest may own the TAP and
+static address at a time.
+
+```sh
+./n run-http
+```
+
+Wait for `HTTP ready http://192.0.2.2:8080/`, then use another host terminal:
+
+```sh
+curl --noproxy '*' http://192.0.2.2:8080/
+curl --noproxy '*' -I http://192.0.2.2:8080/
+```
+
+A browser can open that address too. The HTML is embedded from
+[assets/index.html](../assets/index.html); edit it and restart the task to
+rebuild. `GET /` returns the page, `HEAD /` returns its headers, and unknown
+paths return
+404. HTTP/1.0 and HTTP/1.1 are supported; HTTP/1.1 requires Host. Responses have
+Content-Length and Connection: close. Unsupported methods return 405, malformed
+or body-bearing requests 400, oversized headers 431, incomplete headers 408,
+and unsupported HTTP versions 505. The HTTP image also answers ICMP echo.
+
+The server has one connection, a 1024-byte header limit, 2048-byte TCP RX and
+1024-byte TCP TX buffers, a five-second request deadline, and a fifteen-second
+connection cap. TCP handles segmented input, partial output, retransmission,
+flow control, and FIN. Request bodies, persistent connections, TLS, HTTP/2,
+files, and application sockets are unimplemented. A slow client temporarily
+occupies the sole connection. This kernel service is a development endpoint,
+with no isolation or production entropy; do not expose it to an untrusted link.
+
+For a different TAP use `./scripts/run-network.sh --http <interface>`.
+The task never changes host interfaces, routes, or firewalls. It uses the same
+output-only console and Ctrl+C handling as `run-net`.
+
+## HTTP integration test
+
+```sh
+./n http-test
+```
+
+This rootless test uses an independent standard-library Python TCP client over
+QEMU's Unix-stream Ethernet backend. No host port, TAP, root privilege, browser,
+raw socket, or external network is needed. It verifies ARP, ping, checksums, TCP
+handshake, split/duplicate input, rejected corrupt TCP, the exact embedded page
+across several segments, retransmission of dropped data, graceful FIN, HEAD,
+HTTP errors, reconnect, stalled headers, and recovery after a client reset. The
+same test is required by `./n check` alongside the original ping checks.
+
+Artifacts remain in `target/http/integration/<run>/`: `serial.log`,
+`packets.log`, and `result.txt`. The test stops its own QEMU and cleans its
+socket on completion or failure. smoltcp is pinned to 0.14.0 without
+std/alloc/default features; only Ethernet, IPv4, TCP, and automatic ICMP echo
+replies are enabled. A PIT-calibrated single-core TSC supplies actual elapsed
+milliseconds for TCP and HTTP deadlines. See
+[DR-006](<decisions/DR-006 Serve a bounded HTTP endpoint using smoltcp.md>).
+
 ## Troubleshooting host ping
 
 If `ping` reports `Destination Host Unreachable`, check that `run-net` printed
@@ -148,7 +209,8 @@ or change routes without identifying where the traffic is lost.
   Invalid used IDs, lengths, advances, or duplicate unowned completions poison
   the queue. A device error stops the kernel with diagnostics; static storage
   remains pinned even if reset or processing fails. Full TX queues drop/count
-  replies rather than overwrite descriptors or wait indefinitely.
+  ping-only replies; the HTTP adapter withholds transmit tokens until space is
+  available. Neither path overwrites descriptors or waits indefinitely.
 - The modern virtio header occupies 12 bytes without offloads. QEMU 7.2 leaves
   `num_buffers=0` with mergeable RX disabled; the driver accepts zero or one in
   this single-buffer mode, rejects other counts, and still validates flags,

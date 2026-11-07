@@ -42,9 +42,9 @@ The HAL isolates port and DMA operations and has an explicit host test backend.
   response formatting, embedded page, and clock conversion with host tests.
 - [x] Add the pinned TCP stack, safe virtio adapter, hardware clock, and
   separate HTTP kernel image with bounded connection lifecycle handling.
-- [ ] Add `http-test` and `run-http` tasks, independent packet-level QEMU
+- [x] Add `http-test` and `run-http` tasks, independent packet-level QEMU
   verification, and usage documentation.
-- [ ] Run the complete repository checks, verify host HTTP where available,
+- [x] Run the complete repository checks, verify host HTTP where available,
   commit the implementation, and move this plan to `completed/`.
 
 ## Verification
@@ -77,9 +77,21 @@ explicit. No open question blocks this initial implementation.
 
 ## Results
 
-Portable HTTP and clock conversion are implemented. See
-[DR-006](<../decisions/DR-006 Serve a bounded HTTP endpoint using smoltcp.md>).
-HEAD is supported alongside GET to permit `curl -I`. The HTTP image boots in
-QEMU and reports readiness after PIT calibration. The pinned Rust wrapper now
+Completed with
+[DR-006](<../../decisions/DR-006 Serve a bounded HTTP endpoint using smoltcp.md>).
+GET and HEAD serve the embedded 2,093-byte page. The pinned Rust wrapper now
 supplies the host sysroot for dependency build scripts; native dependency flags
-use absolute paths. Packet-level verification and host tasks are next.
+use absolute paths. `run-http` uses the existing TAP prerequisites without
+changing host networking. Application networking remains unimplemented.
+
+- `./n check` passed: 75 host tests, native linting, boot/bytecode/fault QEMU
+  cases, existing ping verification, and the new HTTP/TCP integration test.
+- The independent Python peer verified exact page and headers, segmentation,
+  split/duplicate input, corrupt TCP rejection, dropped-data retransmission,
+  graceful close/reconnect, HEAD and HTTP errors, the five-second header
+  deadline, and recovery after a client reset.
+- Host QEMU 11.1.3 over the pre-existing `byte-ring0` TAP served an exact
+  byte-for-byte page to curl. A subsequent curl HEAD returned 200 and
+  Content-Length 2093 without a body. The test guest was stopped afterward.
+- The page and service remain bounded, polled, and single-connection; TLS,
+  persistent connections, request bodies, and application sockets are excluded.

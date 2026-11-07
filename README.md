@@ -40,7 +40,10 @@ to COM1 in the boot context. See [Bytecode API](docs/Bytecode%20API.md).
 A separate network image now supports modern virtio-net, static IPv4
 `192.0.2.2/24`, ARP, and logged ICMP echo replies. Use `./n demo-ping` for an
 unprivileged demonstration, or follow [Networking](docs/Networking.md) for host
-TAP ping. There is no application-facing network service or TCP/IP socket API.
+TAP ping. A separate kernel-hosted HTTP server uses smoltcp to serve an embedded
+page at `http://192.0.2.2:8080/`. Run `./n run-http` with the same TAP, or use
+`./n http-test` for rootless TCP/HTTP verification. There is no
+application-facing network service or socket API.
 
 ## Development
 
@@ -54,6 +57,8 @@ downloads tools and Rust components into the ignored `.cache/` directory. Rust
 and the bare-metal standard library are pinned together at 1.99.0.
 
 ```sh
+./n run-http       # Serve the embedded page on a preconfigured host TAP
+./n http-test      # Rootless HTTP, TCP retransmission, and recovery checks
 ./n demo-ping      # Static-IP guest logs and verified synthetic ping replies
 ./n run-net        # Host ping via a preconfigured TAP (see Networking docs)
 ./n net-wrap-test  # Long descriptor-reuse and 16-bit index-wraparound check
@@ -83,10 +88,10 @@ the integration test.
 For `./n run` and `./n check`, install `qemu-system-x86_64` or provide a working
 Docker/Podman Docker CLI. When host QEMU is absent, the test builds a Debian
 Bookworm QEMU container from `tools/qemu/Dockerfile`. CPU emulation uses TCG and
-requires no KVM access. Each test guest has a 20-second timeout; serial and
-error logs remain in `target/qemu-test/integration/<case>/`. The test kernel has
-a separate output directory and enables an emulator exit device; the normal
-kernel simply halts.
+requires no KVM access. Boot/fault test guests have a 20-second timeout; HTTP
+has a 60-second cap; serial and error logs remain in
+`target/qemu-test/integration/<case>/`. The test kernel has a separate output
+directory and enables an emulator exit device; the normal kernel simply halts.
 
 Optionally enable Pixui's staged Markdown formatting hook:
 
