@@ -51,8 +51,9 @@ The fallback retains a read-only workspace, `--network none`, and dropped
 capabilities. A random per-run Unix socket directory is mounted read-only;
 only that socket's permissions permit connection across container UID mappings.
 The peer uses no host IP interface, despite exercising real guest Ethernet/IP.
-The current environment was verified with rootless Podman via its Docker CLI;
-standalone Docker and host-QEMU paths were not available for manual comparison.
+The packet path was verified with rootless Podman via its Docker CLI
+(Bookworm QEMU 7.2) and host QEMU 11.1.3. Standalone Docker was not available
+for manual comparison.
 
 ## Ping from the host with TAP
 
@@ -89,7 +90,10 @@ Then, in another host terminal:
 ping -c 4 192.0.2.2
 ```
 
-The guest logs each accepted request and its reply outcome. Stop QEMU with
+The guest logs each accepted request and its reply outcome. The launch task
+uses an output-only serial console with stdin disconnected, so QEMU cannot
+be suspended by terminal job control while Nao owns the foreground terminal.
+Stop QEMU with
 Ctrl+C. Remove the interface explicitly when finished:
 
 ```sh
@@ -104,9 +108,26 @@ container. Use `demo-ping` when those host facilities are unavailable.
 
 QEMU user-mode NAT/host forwarding does not provide this inbound ICMP path.
 TCP/UDP `hostfwd` options are not a replacement for TAP when using host `ping`.
-Manual TAP ping was not run in the implementation environment: host QEMU and
-`/dev/net/tun` were both unavailable. The unprivileged packet path is tested
-in the normal check suite instead.
+Host TAP ping was verified with QEMU 11.1.3: four requests received four
+replies with no packet loss. The unprivileged packet path remains in the normal
+check suite so CI does not need a configured TAP.
+
+## Troubleshooting host ping
+
+If `ping` reports `Destination Host Unreachable`, check that `run-net` printed
+both `Byte Ring OS: COM1 ready` and the `virtio-net ready` line. Starting the
+QEMU process alone does not mean the guest has reached its network loop.
+
+A QEMU process with `STAT=T` in `ps` is stopped. Older launchers inherited
+Nao's terminal stdin while running in a background process group; QEMU's
+terminal setup/read could stop the entire VM before boot. Stop the old task
+and rerun `./n run-net` after updating. The current launcher disconnects stdin
+while still streaming serial output and supporting Nao's Ctrl+C cancellation.
+
+Use `ip neigh show dev byte-ring0` to inspect ARP resolution. A failed neighbor
+entry and no guest-ready line suggest a stopped/unbooted guest; a ready guest
+with no replies needs further packet inspection. Do not disable host firewalls
+or change routes without identifying where the traffic is lost.
 
 ## Implementation boundaries
 

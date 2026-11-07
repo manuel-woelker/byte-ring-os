@@ -12,7 +12,7 @@ for test_case in boot vm-errors divide invalid-opcode general-protection page-fa
   status=0
   QEMU_TIMEOUT=20s ./scripts/qemu.sh \
     -machine pc -accel tcg -cpu qemu64 -m 64M -smp 1 \
-    -display none -monitor none -serial stdio -no-reboot -no-shutdown \
+    -display none -monitor none -serial stdio -no-reboot \
     -device isa-debug-exit,iobase=0xf4,iosize=0x01 -kernel "${kernel}" \
     > "${logs}/actual.serial" 2> "${logs}/qemu.stderr" || status=$?
   if [[ "${status}" != 33 ]]; then

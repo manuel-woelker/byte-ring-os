@@ -23,7 +23,9 @@ a host test harness.
 ## Running the kernel
 
 Use `./n run` to build the normal kernel and boot QEMU with COM1 output streamed
-live to the host terminal. Press Ctrl+C to stop. The task has direct output
+live to the host terminal. Serial consoles are output-only: stdin is
+disconnected so QEMU cannot be stopped by background terminal job control.
+Press Ctrl+C to stop. The task has direct output
 enabled so Nao does not buffer the console until QEMU exits. It uses system
 QEMU when available and otherwise the same container fallback as the tests.
 The shared launcher removes its container when the run stops.
@@ -87,6 +89,9 @@ Test-only fault injection and emulator exit code are absent from normal builds.
 CPU exceptions are currently terminal; recovery and device interrupts remain
 future work. See
 [DR-002](<decisions/DR-002 Report fatal CPU exceptions through COM1.md>).
+
+Automated fault/demo images permit guest shutdown so `isa-debug-exit` can
+terminate QEMU; `-no-shutdown` is reserved for persistent interactive runs.
 
 ## Repository conventions
 

@@ -10,7 +10,7 @@ for test_case in divide invalid-opcode general-protection page-fault double-faul
   status=0
   QEMU_TIMEOUT=20s ./scripts/qemu.sh \
     -machine pc -accel tcg -cpu qemu64 -m 64M -smp 1 \
-    -display none -monitor none -serial stdio -no-reboot -no-shutdown \
+    -display none -monitor none -serial stdio -no-reboot \
     -device isa-debug-exit,iobase=0xf4,iosize=0x01 \
     -kernel "target/qemu-test/${test_case}/x86_64-unknown-none/release/byte-ring-kernel.bin" \
     || status=$?

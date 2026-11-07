@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Shared host/container launcher; callers supply the image and console options.
 set -euo pipefail
+# Nao owns the foreground terminal. These consoles are output-only; inheriting
+# TTY stdin can stop background QEMU during terminal setup or reads.
+exec < /dev/null
 repository_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd -- "${repository_root}"
 

@@ -1,8 +1,7 @@
 # Virtio networking and static IPv4 ping
 
-Status: complete. Automated tests and the live demo pass. Optional host TAP
-verification was unavailable (no host QEMU or `/dev/net/tun`). Decisions are
-recorded in
+Status: complete. Automated tests, live demo, and subsequent host TAP ping
+verification pass. Decisions are recorded in
 [DR-005](<../../decisions/DR-005 Use polled virtio networking with static IPv4.md>).
 
 ## Goal and scope
@@ -316,3 +315,14 @@ claims require later native/KVM measurements; TCG tests establish correctness.
 - The required automated criteria are complete. Remaining asynchronous device
   interrupts, general sockets, and application SQ/CQ integration are explicit
   exclusions rather than unfinished work in this plan.
+
+## Subsequent host TAP verification
+
+After host QEMU was installed, real TAP ping exposed terminal job control:
+Nao's background QEMU inherited the foreground terminal's stdin and stopped
+before kernel boot. The shared launcher now disconnects stdin for output-only
+serial consoles. An interactive PTY launch then printed both ready lines and
+answered `ping -c 4 -W 2 192.0.2.2` with four replies and zero packet loss on
+host QEMU 11.1.3. No host routes or interfaces were changed during diagnosis.
+Automated exit-device cases also omit `-no-shutdown`, which otherwise leaves
+the newer QEMU paused instead of terminating with the expected test exit code.
