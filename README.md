@@ -8,6 +8,13 @@ to extend. Clients would submit bounded bytecode programs through ring buffers;
 the kernel would validate and execute them against explicitly granted
 capabilities, publishing completions through ring buffers as well.
 
+The initial architecture gives each application a submission queue (SQ) and
+completion queue (CQ). Applications fill the SQ with bytecode programs and use
+CPU `syscall` to request a bounded synchronous batch. The kernel copies,
+validates, and executes programs, then publishes correlated CQ results. See
+[the kernel API design](docs/Kernel%20API.md) for the intended contract; this
+application interface is not implemented yet.
+
 These are research goals, not demonstrated guarantees. Batching may reduce
 boundary crossings, but verification, scheduling, synchronization, and copying
 can outweigh those savings. We will measure the tradeoffs.

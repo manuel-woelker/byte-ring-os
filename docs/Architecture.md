@@ -63,42 +63,43 @@ and preserves the invalid interrupted stack pointer.
 
 ## Intended interaction model
 
-Clients submit versioned requests and bounded bytecode through submission ring
-buffers. The kernel validates the request, resolves capabilities, executes a
-bounded amount of VM work, and publishes a correlated completion. Notifications
-wake consumers when needed; queues alone do not solve sleeping and wakeup races.
+Each user application has one initial submission queue (SQ) and completion
+queue (CQ), established at application startup. It writes bounded bytecode
+programs into SQ entries and release-publishes them, then uses the x86_64 CPU
+`syscall` instruction to request synchronous processing of a bounded batch.
+The kernel copies each program into private memory, validates and executes it
+against granted capabilities, and publishes one correlated CQ completion.
+The application drains its CQ before requesting more work when it fills.
 
-“All kernel interactions” describes the intended client-facing programming
-model. Hardware interrupts, CPU exceptions, bootstrapping, and the mechanism
-that initially establishes shared queues still require privileged native code.
-The exact notification and privilege-transition mechanisms remain undecided.
+This is the accepted architecture in
+[DR-003](<decisions/DR-003 Submit kernel bytecode through application queue pairs.md>).
+See [the kernel API design](Kernel%20API.md) for entry fields, ownership,
+publication, backpressure, syscall progress, execution limits, and errors.
+Queues, bytecode, userspace, and syscall entry remain unimplemented.
 
-## Contracts to establish before implementation
+The initial queues are single-producer/single-consumer and programs complete
+in submission order before the syscall returns. There is no background poller,
+blocking wait, or asynchronous service execution yet. CPU entry requests queue
+progress; individual VM service calls carry the actual kernel operations.
+Kernel entry, queue processing, VM execution, capability-controlled services,
+and native drivers remain separate layers.
 
-- Specify request encoding, version negotiation, completion IDs, and error
-  semantics without embedding native pointers or Rust layout in the ABI.
-- Specify buffer ownership and lifetimes, queue capacity, backpressure,
-  overflow, cancellation, and teardown while requests remain outstanding.
-- Begin with a single-producer/single-consumer queue; document memory ordering
-  and address-space trust boundaries before adding concurrent producers.
-- Treat shared memory as untrusted: prevent validation/execution races by
-  snapshotting inputs or enforcing ownership. Safe Rust alone cannot prevent
-  another address space from mutating a validated program.
-- Define verifier rules, instruction semantics, capability rights, memory and
-  instruction budgets, yielding, and fault isolation before privileged effects.
-- Keep VM authority separate from execution: bytecode must never grant rights
-  merely by naming an operation or handle.
+“All kernel interactions” describes the intended application-facing model.
+Hardware interrupts, CPU exceptions, bootstrapping, queue establishment, and
+native drivers still require privileged code. VM authority never includes raw
+HAL handles or port access. User-fault containment and proper user/supervisor
+mappings must precede isolated applications.
 
 ## Next milestones
 
 1. Establish explicit memory permissions and interrupt-controller/device
    interrupt handling before introducing concurrent device access.
-2. Define a minimal versioned request/completion format and test bounded queue
-   wraparound, full/empty behavior, and ownership on the host.
-3. Implement a small interpreter and verifier with malformed-program tests and
-   deterministic resource exhaustion behavior.
-4. Connect one capability-controlled kernel operation end to end, then measure
-   batching benefits and tail latency against a simple baseline.
+2. Specify the wire codec for the accepted queue API and implement bounded
+   rings, ownership, CQ backpressure, and hostile-control-state tests.
+3. Define the minimal bytecode instruction set and implement an interpreter
+   and verifier with malformed-program and resource-exhaustion tests.
+4. Add application isolation and syscall entry/return, connect a bounded logging
+   capability end to end, then measure batching and tail latency.
 
 Record consequential choices in [decision records](decisions/). Keep this page
 about current boundaries and intended contracts; do not describe proposed
