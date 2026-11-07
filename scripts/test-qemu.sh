@@ -4,7 +4,7 @@ set -euo pipefail
 repository_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd -- "${repository_root}"
 
-for test_case in boot divide invalid-opcode general-protection page-fault double-fault panic; do
+for test_case in boot vm-errors divide invalid-opcode general-protection page-fault double-fault panic; do
   ./scripts/build-kernel.sh --qemu-test "${test_case}"
   kernel="target/qemu-test/${test_case}/x86_64-unknown-none/release/byte-ring-kernel.bin"
   logs="target/qemu-test/integration/${test_case}"
@@ -24,6 +24,12 @@ for test_case in boot divide invalid-opcode general-protection page-fault double
     printf 'Byte Ring OS: COM1 ready\r\n' > "${logs}/expected.serial"
     if ! cmp -s -- "${logs}/expected.serial" "${logs}/actual.serial"; then
       printf 'Unexpected COM1 boot output. Logs: %s\n' "${logs}" >&2
+      exit 1
+    fi
+  elif [[ "${test_case}" == vm-errors ]]; then
+    printf 'Byte Ring OS: COM1 ready\r\nByte Ring OS: VM rejection checks passed\r\n' > "${logs}/expected.serial"
+    if ! cmp -s -- "${logs}/expected.serial" "${logs}/actual.serial"; then
+      printf 'Unexpected bytecode output or rejected-program side effects. Logs: %s\n' "${logs}" >&2
       exit 1
     fi
   else

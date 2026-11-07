@@ -43,18 +43,20 @@ the test backend refuses bare-metal builds. Keep these configurations in
 separate Cargo invocations. `./n check-hal-config` also verifies that both
 invalid backend selections fail with the intended configuration diagnostic.
 
-`./n qemu-test` builds separate Multiboot images for normal boot, divide error,
-invalid opcode, general protection, page fault, double fault, and Rust panic.
-Each boots with software CPU emulation and must exit with status 33 after guest
-validation. Normal boot checks the exact COM1 bytes including CRLF. Fault cases
-check the hardware frame and printed diagnostic; the double-fault case uses an
-invalid interrupted stack and must enter its emergency IST stack. Timeouts,
-unexpected panics, guest resets, missing output, invalid frames, and unexpected
-boot bytes all fail. Logs remain in `target/qemu-test/integration/<case>/`. Use
-a system `qemu-system-x86_64` or a working Docker-compatible CLI; the fallback
-container contains Debian Bookworm's QEMU and SeaBIOS. Emulator versions follow
-the host or container distribution rather than Tool Tool. CI installs QEMU
-explicitly.
+`./n qemu-test` builds separate Multiboot images for normal boot, VM rejection
+checks, divide error, invalid opcode, general protection, page fault, double
+fault, and Rust panic. Each boots with software CPU emulation and must exit with
+status 33 after guest validation. Normal boot executes WRITE to stdout handle 0
+and RETURN 123, checking the exact COM1 bytes including CRLF. VM rejection
+checks verify that malformed programs and invalid file handles produce errors
+without output. Fault cases check the hardware frame and printed diagnostic; the
+double-fault case uses an invalid interrupted stack and must enter its emergency
+IST stack. Timeouts, unexpected panics, guest resets, missing output, invalid
+frames, and unexpected boot bytes all fail. Logs remain in
+`target/qemu-test/integration/<case>/`. Use a system `qemu-system-x86_64` or a
+working Docker-compatible CLI; the fallback container contains Debian Bookworm's
+QEMU and SeaBIOS. Emulator versions follow the host or container distribution
+rather than Tool Tool. CI installs QEMU explicitly.
 
 Add host behavior tests as ring buffers, the protocol, and the VM are
 implemented. Test invalid bytecode, stale capabilities, full queues, wraparound,

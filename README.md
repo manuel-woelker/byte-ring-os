@@ -25,13 +25,17 @@ The Rust workspace boots a minimal x86_64 kernel in QEMU and prints
 `Byte Ring OS: COM1 ready` through a polling 16550 UART driver. A HAL selected
 at compile time supplies native port I/O or a test-owned scripted backend.
 Host unit tests exercise the driver; a QEMU integration test exercises the
-native HAL and checks exact serial output. CPU faults print exception names,
+native HAL and checks exact serial output, now produced through bytecode
+WRITE to stdout. A rejection case also checks that malformed programs and an
+ungranted handle do not emit output. CPU faults print exception names,
 register context, error codes, and page-fault address/access details before
 halting. Double faults use an emergency stack.
 
 Boot support is a minimal Multiboot v1 adapter with an initial identity map and
 stack, plus fatal exception handling. There is no memory manager, device
-interrupt handling, ring buffer, or VM yet.
+interrupt handling, ring buffer, userspace, or CPU syscall entry yet. A small
+bytecode VM now supports RETURN and generic WRITE, with stdout handle 0 bound
+to COM1 in the boot context. See [Bytecode API](docs/Bytecode%20API.md).
 
 ## Development
 
@@ -71,9 +75,10 @@ the integration test.
 For `./n run` and `./n check`, install `qemu-system-x86_64` or provide a working
 Docker/Podman Docker CLI. When host QEMU is absent, the test builds a Debian
 Bookworm QEMU container from `tools/qemu/Dockerfile`. CPU emulation uses TCG and
-requires no KVM access. The guest has a 20-second timeout; serial and error logs
-remain in `target/qemu-test/integration/`. The test kernel has a separate output
-directory and enables an emulator exit device; the normal kernel simply halts.
+requires no KVM access. Each test guest has a 20-second timeout; serial and
+error logs remain in `target/qemu-test/integration/<case>/`. The test kernel has
+a separate output directory and enables an emulator exit device; the normal
+kernel simply halts.
 
 Optionally enable Pixui's staged Markdown formatting hook:
 

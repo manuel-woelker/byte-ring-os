@@ -12,6 +12,7 @@ bench = false
 
 [features]
 qemu-test = []
+qemu-vm-errors = ["qemu-test"]
 qemu-divide = ["qemu-test"]
 qemu-invalid-opcode = ["qemu-test"]
 qemu-general-protection = ["qemu-test"]

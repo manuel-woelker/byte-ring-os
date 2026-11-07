@@ -4,8 +4,11 @@
 mod boot;
 mod debug;
 mod exceptions;
+mod files;
 #[cfg(feature = "qemu-test")]
 mod qemu_test;
+#[cfg(feature = "qemu-test")]
+mod vm_checks;
 
 use core::panic::PanicInfo;
 
@@ -16,18 +19,21 @@ extern "C" fn kernel_main() -> ! {
     // SAFETY: first initialization on the sole boot CPU at CPL0 with IF=0.
     unsafe { exceptions::initialize() };
     // SAFETY: this is the sole COM1 owner; interrupts and other CPUs are off.
-    let mut serial = unsafe { debug::com1() };
-    let result = serial.write_bytes(b"Byte Ring OS: COM1 ready\r\n");
+    let serial = unsafe { debug::com1() };
+    let mut files = files::BootFiles::new(serial);
+    let result = files::boot_program(&mut files);
     #[cfg(feature = "qemu-test")]
     {
-        if result.is_err() {
+        if result != Ok(123) {
             qemu_test::finish(false);
         }
-        qemu_test::run()
+        qemu_test::run(&mut files)
     }
     #[cfg(not(feature = "qemu-test"))]
     {
-        let _ = result;
+        if let Err(error) = result {
+            panic!("boot bytecode failed: {error:?}");
+        }
         halt()
     }
 }

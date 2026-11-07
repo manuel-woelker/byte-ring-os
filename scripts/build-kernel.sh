@@ -13,7 +13,7 @@ if [[ "${1:-}" == "--qemu-test" ]]; then
   test_case="${2:-boot}"
   case "${test_case}" in
     boot) features=qemu-test ;;
-    divide|invalid-opcode|general-protection|page-fault|double-fault|panic)
+    vm-errors|divide|invalid-opcode|general-protection|page-fault|double-fault|panic)
       features="qemu-${test_case}" ;;
     *) printf 'Unknown QEMU test case: %s\n' "${test_case}" >&2; exit 2 ;;
   esac

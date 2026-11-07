@@ -9,12 +9,14 @@
   It initializes the UART and polls with a bounded per-byte budget. Raw output
   preserves bytes; `core::fmt::Write` uses the same path.
 - `crates/kernel` boots through a Multiboot v1 adapter, enters 64-bit Rust,
-  writes `Byte Ring OS: COM1 ready` to COM1, and halts. Panics use a bounded
+  executes WRITE to stdout handle 0 to print `Byte Ring OS: COM1 ready`
+  through COM1, and halts. Panics use a bounded
   direct diagnostic path without a global logger lock. CPU exceptions produce
   a fatal register/error report; page faults include CR2 and access details.
 - `crates/kernel-core` contains portable `no_std` code. It currently defines an
-  initial instruction budget plus portable exception frames and diagnostic
-  formatting; ring buffers and VM behavior are future work.
+  allocation-free bytecode encoder, verifier, interpreter, file-service
+  boundary, and portable exception diagnostics. The VM supports RETURN with an
+  immediate result and WRITE with an immediate file handle and inline bytes.
 
 See
 [DR-001](<decisions/DR-001 Select the hardware abstraction layer at compile time.md>)
@@ -75,7 +77,13 @@ This is the accepted architecture in
 [DR-003](<decisions/DR-003 Submit kernel bytecode through application queue pairs.md>).
 See [the kernel API design](Kernel%20API.md) for entry fields, ownership,
 publication, backpressure, syscall progress, execution limits, and errors.
-Queues, bytecode, userspace, and syscall entry remain unimplemented.
+The bytecode/service layer is implemented and described in
+[Bytecode API](Bytecode%20API.md) and
+[DR-004](<decisions/DR-004 Write through file handles with typed bytecode operands.md>).
+The boot file context grants only stdout handle 0, backed by the UART driver;
+the VM can dispatch other handle numbers through a different context. Whole
+program validation precedes file effects. Memory-reference mode is reserved
+and rejected. Queues, userspace, and CPU syscall entry remain unimplemented.
 
 The initial queues are single-producer/single-consumer and programs complete
 in submission order before the syscall returns. There is no background poller,
@@ -96,10 +104,10 @@ mappings must precede isolated applications.
    interrupt handling before introducing concurrent device access.
 2. Specify the wire codec for the accepted queue API and implement bounded
    rings, ownership, CQ backpressure, and hostile-control-state tests.
-3. Define the minimal bytecode instruction set and implement an interpreter
-   and verifier with malformed-program and resource-exhaustion tests.
-4. Add application isolation and syscall entry/return, connect a bounded logging
-   capability end to end, then measure batching and tail latency.
+3. Connect the existing bytecode interpreter to queue consumption and map
+   validation, limit, file, and short-write errors into CQ completions.
+4. Add application isolation and syscall entry/return, connect a bounded stdout
+   file handle end to end, then measure batching and tail latency.
 
 Record consequential choices in [decision records](decisions/). Keep this page
 about current boundaries and intended contracts; do not describe proposed

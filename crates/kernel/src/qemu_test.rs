@@ -22,10 +22,11 @@ const CASES: u32 = cfg!(feature = "qemu-divide") as u32
     + cfg!(feature = "qemu-general-protection") as u32
     + cfg!(feature = "qemu-page-fault") as u32
     + cfg!(feature = "qemu-double-fault") as u32
-    + cfg!(feature = "qemu-panic") as u32;
+    + cfg!(feature = "qemu-panic") as u32
+    + cfg!(feature = "qemu-vm-errors") as u32;
 const _: () = assert!(CASES <= 1, "select at most one QEMU fault scenario");
 
-pub fn run() -> ! {
+pub fn run(files: &mut impl byte_ring_kernel_core::file::FileWriter) -> ! {
     // SAFETY: only these test-image functions intentionally violate CPU rules.
     // Faults must enter the installed fatal handlers and must never return.
     unsafe {
@@ -41,6 +42,8 @@ pub fn run() -> ! {
             trigger_double_fault()
         } else if cfg!(feature = "qemu-panic") {
             panic!("intentional QEMU panic")
+        } else if cfg!(feature = "qemu-vm-errors") {
+            super::vm_checks::run(files)
         } else {
             finish(true)
         }

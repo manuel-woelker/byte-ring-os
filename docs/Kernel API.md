@@ -1,7 +1,9 @@
 # Kernel API
 
-Status: initial architecture design; no queue, VM, application, or syscall
-implementation exists yet.
+Status: the version-one bytecode interpreter and boot stdout adapter are
+implemented. Queues, applications, and CPU syscall entry remain architecture
+designs. See [Bytecode API](Bytecode%20API.md) for the executable program
+format.
 [DR-003](<decisions/DR-003 Submit kernel bytecode through application queue pairs.md>)
 records the chosen boundary. Details below describe the first implementation
 target, not a stable public binary interface.
@@ -147,10 +149,12 @@ The entry, VM, service dispatcher, and native drivers are separate layers.
 
 ## VM execution and authority
 
-The bytecode instruction set is a separate design decision. Its first version
-needs a bounded way to reference constants, invoke approved services, and return
-one value. A VM service-call instruction is not the x86 CPU `syscall`
-instruction.
+The initial bytecode instruction set is implemented and specified in
+[Bytecode API](Bytecode%20API.md) and
+[DR-004](<decisions/DR-004 Write through file handles with typed bytecode operands.md>).
+RETURN takes an immediate result; WRITE takes an immediate file handle and
+inline bytes interleaved with instructions. Memory-reference mode is reserved
+and rejected. A VM WRITE is not the x86 CPU `syscall` instruction.
 
 Every submission starts with fresh VM-local state. Verify instruction encoding,
 operand types, branch targets, constant ranges, and supported operations before
@@ -160,10 +164,12 @@ per-program limits bounds one entry's work; no operation may wait indefinitely.
 
 Service calls resolve opaque application-local capability handles. Check type,
 rights, lifetime, and arguments when executing each call. Programs cannot name
-kernel addresses or acquire authority by naming an opcode. The first useful
-service should be bounded debug output through an explicitly granted logging
-capability; the UART and HAL handles remain private to its kernel
-implementation.
+kernel addresses or acquire authority by naming an opcode. File handles are
+application-local capabilities. Handle `0` is stdout, initially bound to COM1
+for debug output through generic WRITE. Every file operation checks the
+context's grants and write rights; the UART and HAL handles remain private to
+the kernel implementation. Other handles are rejected by the current boot
+context.
 
 Verification failure has no service effects. A runtime trap, denied capability,
 resource limit, or service failure stops the program and produces a failure
