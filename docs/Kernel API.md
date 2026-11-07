@@ -1,9 +1,9 @@
 # Kernel API
 
 Status: the version-one bytecode interpreter and boot stdout adapter are
-implemented. Queues, applications, and CPU syscall entry remain architecture
-designs. See [Bytecode API](Bytecode%20API.md) for the executable program
-format.
+implemented. Portable queue processing and the fixed experimental queue codec
+are implemented; native applications and CPU entry remain the current target.
+See [Bytecode API](Bytecode%20API.md) for the executable program format.
 [DR-003](<decisions/DR-003 Submit kernel bytecode through application queue pairs.md>)
 records the chosen boundary. Details below describe the first implementation
 target, not a stable public binary interface.
@@ -200,3 +200,31 @@ backpressure, correlation and ordering, concurrent mutation, invalid bytecode,
 capability misuse, fuel exhaustion, partial effects, and repeated syscall entry.
 Use QEMU to check actual ring-3 transitions and ensure malicious requests fail
 without crashing the kernel or accessing another application's resources.
+
+## Experimental userspace codec
+
+[DR-009](<decisions/DR-009 Run isolated native programs through queue syscalls.md>)
+defines the first isolated userspace milestone. The portable engine uses four
+slots, 256 program bytes, four submissions per entry, 64 VM instructions, and
+128 output bytes per program. SQ entries are 272 bytes: the fields above occupy
+bytes 0–15, followed by 256 inline program bytes. CQ entries are 32 bytes:
+sequence at 0, cookie at 8, status u32 at 16, zero reserved u32 at 20, result at
+24. All scalars are little-endian. Completion statuses are numbered 0–5 in the
+order Success, InvalidProgram, Denied, LimitExceeded, ServiceError, VmTrap.
+Non-success result details are initially zero.
+
+Each queue page has an aligned u64 counter at 0 and slots beginning at 64.
+The SQ consumer and CQ consumer each occupy separate pages. Stop values are
+Idle=0, BatchLimit=1, CompletionFull=2, Busy=3 (reserved), QueueFault=4, and
+BadArgument=5. A disabled pair remains disabled until process teardown.
+Native syscall 1 is reserved for process exit with status in RDI; it is a
+lifecycle operation, while all file effects continue through bytecode.
+
+The planned bootstrap descriptor is a 128-byte immutable record identified by
+`BRUSR001`, version u32=1 at 8, page size u32 at 12, SQ/SQ-head/CQ/CQ-consumer
+addresses u64 at 16/24/32/40, capacity/program/batch u32 at 48/52/56, image base
+u64 at 64, stack bounds u64 at 72/80, stdout handle u64 at 88, and VM
+instruction and output bounds u32 at 96/100. Other bytes are zero. RDI names
+this descriptor and RSI carries an opaque initial argument. Layout constants and
+codecs live in `kernel_core::user_abi`; applications never select another
+process's pair.
