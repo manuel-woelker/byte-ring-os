@@ -91,5 +91,31 @@ class Qmp:
         after = self.execute("human-monitor-command", {"command-line": "info irq"})
         assert before == after, "interrupt activity continued during quiet idle"
 
+    def apic_timer(self):
+        import re
+        state = self.execute("human-monitor-command", {"command-line": "info lapic"})
+        timer = re.search(r"LVTT\s+0x([0-9a-fA-F]+)", state)
+        counts = re.search(r"initial_count = (\d+) current_count = (\d+)", state)
+        assert timer and counts, "missing local APIC timer state: " + state
+        assert int(timer[1], 16) == 48, "timer must be unmasked one-shot vector 48"
+        assert "divide by 128" in state and "APIC enabled" in state
+        return int(counts[1]), int(counts[2])
+
+    def assert_apic_deadline(self):
+        import time
+        time.sleep(.05)  # Let ACK TX completion wakeups drain before sampling.
+        initial, current = self.apic_timer()
+        assert 0 < current <= initial
+        assert self.halted(), "deadline wait should halt the CPU"
+        before = self.execute("human-monitor-command", {"command-line": "info irq"})
+        time.sleep(.15)  # Nearly three old PIT maximum countdowns.
+        after_initial, after_current = self.apic_timer()
+        assert after_initial == initial, "quiet long deadline was rearmed"
+        assert 0 < after_current < current, "APIC counter did not keep counting down"
+        assert self.halted(), "long deadline wait should remain halted"
+        after = self.execute("human-monitor-command", {"command-line": "info irq"})
+        assert before == after, "legacy PIC timer activity during APIC deadline"
+        return initial
+
     def close(self):
         self.stream.close()

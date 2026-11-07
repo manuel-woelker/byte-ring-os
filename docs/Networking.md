@@ -165,12 +165,20 @@ across several segments, retransmission of dropped data, graceful FIN, HEAD,
 HTTP errors, reconnect, stalled headers, and recovery after a client reset. The
 same test is required by `./n check` alongside the original ping checks.
 
+QMP inspects halted quiet idle and a one-shot APIC countdown that stays loaded
+across 150 ms, with no PIC timer activity. The test then wakes the CPU with
+ICMP during an incomplete HTTP request and verifies the remaining deadline is
+rearmed rather than restarted. A 24-packet burst exercises receive-budget
+boundaries. Existing retransmission and timeout tests verify timer delivery and
+EOI across repeated use.
+
 Artifacts remain in `target/http/integration/<run>/`: `serial.log`,
 `packets.log`, and `result.txt`. The test stops its own QEMU and cleans its
 socket on completion or failure. smoltcp is pinned to 0.14.0 without
 std/alloc/default features; only Ethernet, IPv4, TCP, and automatic ICMP echo
 replies are enabled. A PIT-calibrated single-core TSC supplies actual elapsed
-milliseconds for TCP and HTTP deadlines. See
+milliseconds for TCP and HTTP deadlines. PIT channel 2 also calibrates the
+local APIC; PIT channel 0 never arms a runtime deadline. See
 [DR-006](<decisions/DR-006 Serve a bounded HTTP endpoint using smoltcp.md>).
 
 ## Troubleshooting host ping
@@ -230,8 +238,12 @@ translation. Application SQ/CQ queues remain separate future work; applications
 never receive raw virtqueue descriptors or DMA/MMIO handles. Both network images
 now use interrupt-driven HLT during idle. The firmware PCI INTx route and legacy
 PIC wake the foreground owner without running device code inside handlers. HTTP
-arms a one-shot PIT deadline for TCP/request timers; a quiet listener and the
-ping image have no periodic timer wakeups.
+arms a calibrated local xAPIC one-shot timer for TCP/request deadlines. Its
+32-bit countdown replaces repeated PIT wakeups. The CPU must expose enabled
+BSP xAPIC below 4 GiB; x2APIC and disabled/unsupported modes fail explicitly.
+PIT channel 2 remains a boot calibration reference. A quiet listener and the
+ping image have no periodic timer wakeups. See
+[DR-008](<decisions/DR-008 Use the local APIC for deadline wakeups.md>).
 
 See
 [DR-005](<decisions/DR-005 Use polled virtio networking with static IPv4.md>)

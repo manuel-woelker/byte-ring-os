@@ -245,6 +245,14 @@ def exercise(peer, qmp):
     client = Client(peer)
     client.write(b"GET /", wait=True)
     started = time.monotonic()
+    initial = qmp.assert_apic_deadline()
+    peer.send(echo(999, b"timer-rearm"))
+    reply = peer.receive()
+    assert reply[23] == 1 and reply[34:36] == b"\0\0" and reply[40:42] == struct.pack("!H", 999)
+    time.sleep(.02)
+    rearmed, current = qmp.apic_timer()
+    assert 0 < current <= rearmed < initial, "NIC wakeup must rearm the remaining deadline"
+    print("APIC: multi-second one-shot keeps counting past 55 ms; NIC wakeup rearms remaining time")
     response, _ = client.response(timeout=9)
     validate(response, 408)
     assert 3 <= time.monotonic() - started <= 8, "request deadline did not use elapsed time"
@@ -316,7 +324,7 @@ def main():
                     qmp.close()
                 assert child.poll() is None, "guest exited unexpectedly"
                 assert not any("PANIC" in line or "EXCEPTION" in line for line in lines)
-                (logs / "result.txt").write_text("IRQ idle/wakeup, burst drain, HTTP responses, TCP loss recovery, deadlines, and reconnect passed.\n")
+                (logs / "result.txt").write_text("IRQ idle/wakeup, APIC long deadline/rearm, burst drain, HTTP, TCP loss recovery, and reconnect passed.\n")
             print("Task outcome: kernel HTTP and TCP integration passed")
         finally:
             if child.poll() is None:

@@ -2,7 +2,7 @@ use super::*;
 use byte_ring_hal::backend::{Operation, TestIo};
 
 #[test]
-fn initialization_routes_only_nic_cascade_and_optional_timer() {
+fn initialization_routes_only_nic_cascade_and_keeps_irq0_masked() {
     let mut master = TestIo::new([]);
     let mut slave = TestIo::new([]);
     let mut elcr = TestIo::new([(0x4d1, 0x10)]);
@@ -13,8 +13,8 @@ fn initialization_routes_only_nic_cascade_and_optional_timer() {
             elcr.ports(0x4d0, 2),
         );
         pic.configure_network(11);
-        pic.arm(11, false);
-        pic.arm(11, true);
+        pic.arm(11);
+        pic.arm(3);
         pic.mask_all();
     }
     let writes = master.operations();
@@ -56,7 +56,7 @@ fn initialization_routes_only_nic_cascade_and_optional_timer() {
             },
             Operation::Write {
                 address: 0x21,
-                value: 0xfa
+                value: 0xf7
             },
             Operation::Write {
                 address: 0x21,

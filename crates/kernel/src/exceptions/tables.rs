@@ -93,6 +93,10 @@ unsafe extern "C" {
     static unexpected_interrupt_stub: u64;
     #[cfg(feature = "network")]
     static irq_stubs: [u64; 16];
+    #[cfg(feature = "network")]
+    static apic_timer_stub: u64;
+    #[cfg(feature = "network")]
+    static apic_spurious_stub: u64;
 }
 
 const _: () = assert!(size_of::<Gate>() == 16);
@@ -135,6 +139,10 @@ pub(super) unsafe fn install() {
             #[cfg(feature = "network")]
             let address = if (32..48).contains(&vector) {
                 addr_of!(irq_stubs).cast::<u64>().add(vector - 32).read()
+            } else if vector == byte_ring_drivers::apic::TIMER_VECTOR as usize {
+                addr_of!(apic_timer_stub).read()
+            } else if vector == byte_ring_drivers::apic::SPURIOUS_VECTOR as usize {
+                addr_of!(apic_spurious_stub).read()
             } else {
                 address
             };

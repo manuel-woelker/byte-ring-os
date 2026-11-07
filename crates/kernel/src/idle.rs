@@ -1,7 +1,8 @@
 //! Single-owner IRQ wakeups. Maskable interrupts are enabled only inside HLT.
 use byte_ring_drivers::{
+    apic::Apic,
     pic::Pic,
-    pit::Timer,
+    pit,
     virtio_net::{Error, Net},
 };
 use byte_ring_hal::port::PortRange;
@@ -15,7 +16,7 @@ static IRQ_PENDING: AtomicU64 = AtomicU64::new(0);
 
 pub struct Idle {
     pic: Pic<'static>,
-    timer: Timer<'static>,
+    timer: Apic<'static>,
     irq: u8,
 }
 impl Idle {
@@ -32,9 +33,10 @@ impl Idle {
         };
         let mut pic = Pic::new(master, slave, elcr);
         pic.configure_network(irq);
+        pit::stop_channel0(pit);
         Self {
             pic,
-            timer: Timer::new(pit),
+            timer: super::apic::initialize(),
             irq,
         }
     }
@@ -46,9 +48,9 @@ impl Idle {
             return Ok(());
         }
         if let Some(delay) = delay_ms {
-            self.timer.arm(delay);
+            self.timer.arm(delay).expect("calibrated APIC timer");
         }
-        self.pic.arm(self.irq, delay_ms.is_some());
+        self.pic.arm(self.irq);
         // SAFETY: CPL0, IF=0, returning IDT entries installed, routes configured.
         // Queue notifications are armed and used rings rechecked. Pending PIC
         // interrupts survive this gap; STI's shadow makes enable+HLT atomic.
@@ -58,7 +60,11 @@ impl Idle {
             core::arch::asm!("sti", "hlt", "cli", options(nostack));
         }
         self.pic.mask_all();
+        self.timer.cancel();
         let pending = IRQ_PENDING.swap(0, Ordering::Acquire);
+        if pending & (1 << 16) != 0 {
+            self.timer.finish_timer();
+        }
         for irq in 0..16 {
             if pending & (1 << irq) != 0 {
                 self.pic.finish(irq);

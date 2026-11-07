@@ -1,6 +1,7 @@
 # DR-007: Sleep between network events using PIC interrupts
 
-- Status: Accepted
+- Status: Superseded in part by
+  [DR-008](<./DR-008 Use the local APIC for deadline wakeups.md>)
 - Date: 2026-11-07
 
 ## Decision

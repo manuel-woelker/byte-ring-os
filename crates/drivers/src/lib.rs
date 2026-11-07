@@ -1,6 +1,7 @@
 #![no_std]
 #![forbid(unsafe_code)]
 
+pub mod apic;
 #[cfg(feature = "tcp")]
 pub mod ethernet;
 pub mod pci;

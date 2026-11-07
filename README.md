@@ -45,8 +45,8 @@ TAP ping. A separate kernel-hosted HTTP server uses smoltcp to serve an embedded
 page at `http://192.0.2.2:8080/`. Run `./n run-http` with the same TAP, or use
 `./n http-test` for rootless TCP/HTTP verification. There is no
 application-facing network service or socket API. Both network images halt while
-idle and wake on NIC interrupts; HTTP also arms one-shot timers for TCP and
-request deadlines.
+idle and wake on NIC interrupts; HTTP uses a calibrated local xAPIC one-shot
+timer for TCP and request deadlines, with no periodic idle tick.
 
 ## Development
 

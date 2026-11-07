@@ -49,14 +49,11 @@ impl<'a> Pic<'a> {
         self.master.write_u8(1, 0xff);
         self.slave.write_u8(1, 0xff);
     }
-    pub fn arm(&mut self, irq: u8, timer: bool) {
+    pub fn arm(&mut self, irq: u8) {
         assert!(valid_network_irq(irq));
         let mut enabled = 1u16 << irq;
         if irq >= 8 {
             enabled |= 1 << 2;
-        }
-        if timer {
-            enabled |= 1;
         }
         self.slave.write_u8(1, !(enabled >> 8) as u8);
         self.master.write_u8(1, !enabled as u8);

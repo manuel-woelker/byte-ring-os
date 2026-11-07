@@ -123,33 +123,47 @@ the dependency and ownership decision.
 
 Both network images remap the legacy 8259 PIC to vectors 32–47 and use the
 validated firmware-assigned PCI INTx line, configured as level-triggered in
-ELCR. Only the NIC, its cascade route, and an optional PIT deadline are
-unmasked. Ordinary boot/fault images keep their existing behavior.
+ELCR. The PIC unmasks only the NIC and its cascade route; IRQ0 stays masked.
+The local xAPIC keeps PIC delivery on LINT0 ExtINT and NMI on LINT1. A separate
+one-shot local timer uses vector 48, and vector 255 handles APIC spurious
+interrupts without EOI. Ordinary boot/fault images keep their existing behavior.
 
-Foreground code runs with IF clear. Small assembly IRQ entries record pending
-IRQ bits and clear IF in the saved return frame; they use no general or SIMD
+Foreground code runs with IF clear. Small assembly entries record pending IRQ
+bits and clear IF in the saved return frame; they use no general or SIMD
 registers, call no Rust, and access no devices. After HLT returns, foreground
-code masks PIC routes, handles EOI (including spurious IRQ 7/15), and suppresses
-queue notifications/clears the virtio ISR before processing more work. There
-is no shared driver borrow or concurrent UART/network servicing.
+code masks PIC routes, stops/masks the local timer, and completes EOI at the
+controller that delivered the interrupt. PIC spurious IRQ 7/15 rules remain
+explicit. Queue notifications and the virtio ISR are handled in foreground
+code. There is no shared driver borrow or concurrent device servicing.
 
 Before HLT, the NIC enables RX/TX completion notifications, orders publication,
-and rechecks both used rings. Pending completions force another poll. The PIC
-holds an arrival after that check, and adjacent `sti; hlt; cli` closes the
-interrupt-enable/sleep race. All PIC, ELCR, PIT, and device I/O uses the HAL.
+and rechecks both used rings. Pending completions force another poll. Pending
+interrupts survive the final check, and adjacent `sti; hlt; cli` closes the
+interrupt-enable/sleep race. All PIC, ELCR, PIT, APIC MMIO, and device accesses
+use the HAL; CPU discovery/MSR reads stay in kernel bootstrap code.
 
-HTTP waits for the earliest smoltcp or application deadline. PIT channel 0
-runs one-shot countdowns, rounded up and limited to approximately 55 ms;
-long deadlines are re-evaluated after waking. Channel 2 calibration supplies
-the TSC clock. A listener with no deadline arms no timer, and the firmware's
-periodic PIT tick is stopped. The ping image has no timer fallback. Immediate
-application work and already-due deadlines continue foreground processing.
+HTTP waits for the earliest smoltcp or application deadline. CPUID and
+IA32_APIC_BASE select a validated enabled BSP xAPIC below 4 GiB; the boot mapper
+maps its register page uncached. Unsupported modes fail explicitly. PIT channel
+2 calibrates the divide-128 APIC counter at boot. Deadline counts round up with
+wide rational arithmetic and saturate at the 32-bit hardware limit. Ordinary
+TCP/HTTP deadlines fit one countdown; a NIC wake cancels and rearms the
+remaining time. There is no PIT channel-0 deadline or runtime fallback.
 
-This is single-core QEMU PC support, without APIC/MSI-X or a scheduler. QMP
-integration checks verify HLT and no IRQ activity in quiet idle, followed by
-NIC wakeup, a burst exceeding the receive budget, retransmission, and deadline
-recovery. See
-[DR-007](<decisions/DR-007 Sleep between network events using PIC interrupts.md>).
+Channel 2 also supplies the existing TSC calibration. A listener with no
+deadline arms no timer, and the firmware's periodic PIT tick is stopped. The
+ping image has no timer fallback. Immediate application work and already-due
+deadlines continue foreground processing. Only HLT on the supported single-core
+QEMU PC is validated; x2APIC, IOAPIC/MSI-X routing, deep sleep, and scheduling
+remain unimplemented.
+
+QMP integration verifies halted quiet idle, NIC/burst wakeup, one-shot APIC
+configuration, and a multi-second countdown that remains armed beyond 55 ms
+without PIC timer activity. It also checks rearm after a NIC wake, TCP loss
+recovery, and request timeouts. See
+[DR-007](<decisions/DR-007 Sleep between network events using PIC interrupts.md>)
+and its timer successor
+[DR-008](<decisions/DR-008 Use the local APIC for deadline wakeups.md>).
 
 ## Intended interaction model
 

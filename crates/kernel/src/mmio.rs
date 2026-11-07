@@ -1,4 +1,4 @@
-//! Boot-owned, uncached identity mappings for validated PCI windows below 4 GiB.
+//! Boot-owned, uncached identity mappings for validated hardware windows below 4 GiB.
 
 use byte_ring_drivers::pci::Window;
 use byte_ring_hal::memory::Memory;
@@ -7,7 +7,7 @@ use core::{arch::asm, cell::UnsafeCell, ptr::addr_of_mut};
 #[repr(C, align(4096))]
 struct Tables([[u64; 512]; 3]);
 struct BootTables(UnsafeCell<Tables>);
-// SAFETY: one boot CPU initializes mappings before enabling the device.
+// SAFETY: one boot CPU initializes mappings with interrupts disabled.
 unsafe impl Sync for BootTables {}
 static TABLES: BootTables = BootTables(UnsafeCell::new(Tables([[0; 512]; 3])));
 unsafe extern "C" {
@@ -15,7 +15,7 @@ unsafe extern "C" {
 }
 
 /// # Safety
-/// Called only during exclusive boot setup, for validated PCI BAR windows.
+/// Called only during exclusive boot setup, for validated PCI BAR or local APIC windows.
 /// No other code may own or access these device register ranges.
 pub unsafe fn map(window: Window) -> Result<Memory<'static>, &'static str> {
     let end = window

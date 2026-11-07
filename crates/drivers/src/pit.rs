@@ -1,4 +1,4 @@
-//! PIT channel-2 calibration and channel-0 one-shot deadline interrupts.
+//! Bounded PIT channel-2 calibration; runtime deadlines use the local APIC.
 use byte_ring_hal::port::PortRange;
 
 /// Measure counter ticks over 65,535 PIT ticks. The caller exclusively owns
@@ -93,65 +93,27 @@ mod tests {
     }
 }
 
-/// Channel-0 interrupt timer. The PIC masks IRQ0 to cancel a pending wakeup.
-pub struct Timer<'a> {
-    ports: PortRange<'a>,
-}
-impl<'a> Timer<'a> {
-    pub fn new(mut ports: PortRange<'a>) -> Self {
-        assert_eq!((ports.base(), ports.length()), (0x40, 4));
-        // Stop the firmware's periodic timer. A count is loaded only for a
-        // real deadline; masking IRQ0 alone would leave the PIT ticking.
-        ports.write_u8(3, 0x30);
-        Self { ports }
-    }
-    /// Round up to hardware ticks, clamping a long deadline to one countdown.
-    pub fn arm(&mut self, milliseconds: u64) {
-        let ticks = (u128::from(milliseconds) * 1_193_182)
-            .div_ceil(1000)
-            .clamp(1, 65_535) as u16;
-        self.ports.write_u8(3, 0x30); // Channel 0, low/high bytes, mode 0.
-        self.ports.write_u8(0, ticks as u8);
-        self.ports.write_u8(0, (ticks >> 8) as u8);
-    }
+/// Stop the firmware's periodic channel-0 timer without loading a countdown.
+/// The caller owns 0x40..=0x43 and keeps PIC IRQ0 masked.
+pub fn stop_channel0(mut ports: PortRange<'_>) {
+    assert_eq!((ports.base(), ports.length()), (0x40, 4));
+    ports.write_u8(3, 0x30);
 }
 
 #[cfg(all(test, feature = "test-hal"))]
-mod timer_tests {
+mod stop_tests {
     use super::*;
     use byte_ring_hal::backend::{Operation, TestIo};
     #[test]
-    fn one_shot_rounds_up_and_caps_without_wrapping() {
-        for (ms, ticks) in [
-            (0, 1u16),
-            (1, 1194),
-            (10, 11932),
-            (55, 65535),
-            (u64::MAX, 65535),
-        ] {
-            let mut io = TestIo::new([]);
-            Timer::new(io.ports(0x40, 4)).arm(ms);
-            assert_eq!(
-                io.operations(),
-                [
-                    Operation::Write {
-                        address: 0x43,
-                        value: 0x30
-                    },
-                    Operation::Write {
-                        address: 0x43,
-                        value: 0x30
-                    },
-                    Operation::Write {
-                        address: 0x40,
-                        value: ticks as u8
-                    },
-                    Operation::Write {
-                        address: 0x40,
-                        value: (ticks >> 8) as u8
-                    }
-                ]
-            );
-        }
+    fn stopping_firmware_tick_never_loads_a_deadline() {
+        let mut io = TestIo::new([]);
+        stop_channel0(io.ports(0x40, 4));
+        assert_eq!(
+            io.operations(),
+            [Operation::Write {
+                address: 0x43,
+                value: 0x30
+            }]
+        );
     }
 }

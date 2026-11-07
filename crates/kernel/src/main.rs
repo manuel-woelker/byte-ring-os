@@ -1,6 +1,8 @@
 #![no_std]
 #![no_main]
 
+#[cfg(feature = "network")]
+mod apic;
 mod boot;
 #[cfg(feature = "http")]
 mod clock;
@@ -82,7 +84,7 @@ fn panic(information: &PanicInfo<'_>) -> ! {
 fn halt() -> ! {
     loop {
         // SAFETY: the boot adapter establishes CPL0. Interrupts remain disabled
-        // because device interrupt handling is not installed yet.
+        // because fatal and ordinary boot paths never resume device work.
         unsafe { core::arch::asm!("cli", "hlt", options(nomem, nostack)) };
     }
 }
