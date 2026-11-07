@@ -58,7 +58,23 @@ standalone Docker and host-QEMU paths were not available for manual comparison.
 
 This optional Linux workflow needs host QEMU, `/dev/net/tun`, `ip`, and
 authority to create/configure one TAP interface. Check that `192.0.2.0/24` does
-not conflict with an existing host route. Configure an isolated TAP explicitly:
+not conflict with an existing host route. On Arch/CachyOS, install host QEMU
+and load the TUN/TAP driver first:
+
+```sh
+sudo pacman -S --needed qemu-system-x86
+sudo modprobe tun
+```
+
+On Debian/Ubuntu, use `sudo apt-get install qemu-system-x86` instead. Confirm
+that `command -v qemu-system-x86_64` finds the executable and `/dev/net/tun`
+exists. A container may hide that device even when the host driver is loaded;
+run this workflow in a host terminal. The existing restricted QEMU container
+fallback supports packet-peer tests, not host TAP access.
+
+`run-net` reports each missing prerequisite separately and prints the relevant
+setup commands; it does not install packages or change device permissions.
+Configure an isolated TAP explicitly:
 
 ```sh
 sudo ip tuntap add dev byte-ring0 mode tap user "$(id -un)"
