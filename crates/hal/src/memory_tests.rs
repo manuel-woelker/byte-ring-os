@@ -53,3 +53,12 @@ fn memory_width_requires_alignment() {
 fn port_width_cannot_cross_end() {
     TestIo::new([]).ports(0xcf8, 4).write_u32(2, 0);
 }
+
+#[test]
+fn split_64_bit_registers_allow_four_byte_alignment() {
+    let mut bytes = [0; 16];
+    let mut memory = Memory::for_test(&mut bytes, 0x1004);
+    memory.write_u64(0, 0x1122334455667788);
+    assert_eq!(memory.read_u32(0), 0x55667788);
+    assert_eq!(memory.read_u32(4), 0x11223344);
+}

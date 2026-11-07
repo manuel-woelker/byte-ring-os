@@ -11,6 +11,7 @@ test = false
 bench = false
 
 [features]
+network = []
 qemu-test = []
 qemu-vm-errors = ["qemu-test"]
 qemu-divide = ["qemu-test"]

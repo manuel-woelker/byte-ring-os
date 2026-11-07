@@ -34,6 +34,14 @@ builds its own fault-injection image, prints the report live, validates the
 guest's result, and exits automatically before the next demonstration. Each
 guest has a 20-second timeout. Normal kernel images are unaffected.
 
+`./n demo-ping` demonstrates the static-IP network image with live serial
+request/reply logs. `./n net-test` is part of `./n check`; `./n net-wrap-test`
+separately tests 65,541 echo exchanges and real 16-bit virtqueue index
+wraparound. The independent peer needs Python 3 and QEMU 7.2+ or the container
+fallback. See [Networking](Networking.md) for artifacts and optional host TAP
+setup. `./n run-net` requires a preconfigured interface and never changes host
+routes.
+
 ## Verification strategy
 
 Driver and HAL host tests run with `--features byte-ring-drivers/test-hal`.

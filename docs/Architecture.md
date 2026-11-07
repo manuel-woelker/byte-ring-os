@@ -2,10 +2,12 @@
 
 ## Implemented foundation
 
-- `crates/hal` exposes owned byte port ranges. Centralized `cfg` wiring selects
-  native x86_64 instructions or a host test implementation with scripted reads
-  and an ordered operation log. Test state belongs to each individual test.
-- `crates/drivers` contains a safe, allocation-free 16550 serial transmitter.
+- `crates/hal` exposes owned width-aware port ranges and bounded MMIO/DMA
+  regions. Centralized `cfg` wiring selects native x86_64 instructions or a host
+  test implementation with scripted reads and an ordered operation log. Test
+  state belongs to each individual test.
+- `crates/drivers` contains a safe, allocation-free 16550 serial transmitter,
+  PCI discovery, modern virtio-net transport, and split DMA virtqueues.
   It initializes the UART and polls with a bounded per-byte budget. Raw output
   preserves bytes; `core::fmt::Write` uses the same path.
 - `crates/kernel` boots through a Multiboot v1 adapter, enters 64-bit Rust,
@@ -62,6 +64,30 @@ and invalid-stack faults, plus a Rust panic. The guest checks vector/error
 codes, instruction addresses where defined, and CR2 before signaling success.
 The double-fault case also verifies that its frame is on the emergency stack
 and preserves the invalid interrupted stack pointer.
+
+## Network image
+
+The separate `network` feature boots a modern PCI virtio-net device and runs a
+bounded polling loop with static guest IPv4 `192.0.2.2/24`. It responds to ARP
+and valid ICMP echo requests and logs ordinary ping traffic through bytecode
+WRITE to stdout. Portable packet code lives in kernel-core; register access
+and raw DMA operations use the compile-time HAL. The driver never exposes DMA
+or MMIO handles through the VM.
+
+PCI capabilities select validated BAR windows rather than fixed addresses.
+The boot-owned mapper adds uncached supervisor mappings above 1 GiB and below
+4 GiB. Permanently pinned static queue/buffer storage uses coherent x86 DMA
+without an IOMMU. Queue ownership, bounds, and publication ordering remain
+explicit. No heap, scheduler, or device interrupt service is needed yet.
+
+See [Networking](Networking.md) for topology, tests, TAP instructions, and
+limits, and
+[DR-005](<decisions/DR-005 Use polled virtio networking with static IPv4.md>)
+for decisions. The rootless Unix-stream test verifies packets independently;
+host TAP ping is an optional separate workflow. Ordinary boot/fault images do
+not require a NIC. TCP/UDP, general sockets, and application networking are
+unimplemented. Polling consumes idle CPU; device-driven sleep remains future
+work.
 
 ## Intended interaction model
 

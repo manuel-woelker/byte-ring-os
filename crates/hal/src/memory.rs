@@ -100,8 +100,14 @@ impl<'a> Memory<'a> {
         self.bounds(offset, 4);
         self.io.write(offset, 4, value);
     }
+    /// Write a device's 64-bit field using two ordered 32-bit accesses. This
+    /// is not atomic and requires four-byte alignment, as in virtio PCI config.
     pub fn write_u64(&mut self, offset: usize, value: u64) {
-        self.bounds(offset, 8);
+        self.bounds(offset, 4);
+        assert!(
+            offset.checked_add(8).is_some_and(|end| end <= self.length),
+            "64-bit field outside region"
+        );
         self.write_u32(offset, value as u32);
         self.write_u32(offset + 4, (value >> 32) as u32);
     }

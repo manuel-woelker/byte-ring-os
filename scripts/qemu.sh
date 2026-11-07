@@ -27,7 +27,11 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-docker run --rm --name "${container_name}" --network none --read-only --cap-drop ALL \
+socket_mount=()
+if [[ -n "${QEMU_SOCKET_DIRECTORY:-}" ]]; then
+  socket_mount=(--volume "${QEMU_SOCKET_DIRECTORY}:${QEMU_SOCKET_DIRECTORY}:ro")
+fi
+docker run --rm "${socket_mount[@]}" --name "${container_name}" --network none --read-only --cap-drop ALL \
   --security-opt no-new-privileges --user "$(id -u):$(id -g)" \
   --volume "${repository_root}:/workspace:ro" --workdir /workspace \
   "${image}" "${command[@]}" "$@"

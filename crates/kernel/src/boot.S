@@ -94,6 +94,7 @@ gdt_pointer:
 .balign 4096
 pml4:
     .skip 4096
+.global pdpt
 pdpt:
     .skip 4096
 page_directory:

@@ -37,6 +37,11 @@ interrupt handling, ring buffer, userspace, or CPU syscall entry yet. A small
 bytecode VM now supports RETURN and generic WRITE, with stdout handle 0 bound
 to COM1 in the boot context. See [Bytecode API](docs/Bytecode%20API.md).
 
+A separate network image now supports modern virtio-net, static IPv4
+`192.0.2.2/24`, ARP, and logged ICMP echo replies. Use `./n demo-ping` for an
+unprivileged demonstration, or follow [Networking](docs/Networking.md) for host
+TAP ping. There is no application-facing network service or TCP/IP socket API.
+
 ## Development
 
 The tooling is adapted from `../pixui`: `./t` bootstraps a checksum-verified
@@ -44,11 +49,14 @@ Tool Tool binary and resolves pinned tools; `./n` runs Nao tasks. A checkout is
 self-contained and does not depend on the sibling repository.
 
 The initial supported development host is x86_64 Linux with Bash, curl,
-sha256sum, and standard archive tools. First use downloads tools and Rust
-components into the ignored `.cache/` directory. Rust and the bare-metal
-standard library are pinned together at 1.99.0.
+sha256sum, Python 3 (network tests), and standard archive tools. First use
+downloads tools and Rust components into the ignored `.cache/` directory. Rust
+and the bare-metal standard library are pinned together at 1.99.0.
 
 ```sh
+./n demo-ping      # Static-IP guest logs and verified synthetic ping replies
+./n run-net        # Host ping via a preconfigured TAP (see Networking docs)
+./n net-wrap-test  # Long descriptor-reuse and 16-bit index-wraparound check
 ./n check          # Formatting, host tests, kernel build, and QEMU test
 ./n format         # Apply Rust and Markdown formatting
 ./n demo-errors    # Show six real CPU fault/panic cases live, then exit

@@ -5,6 +5,10 @@ mod boot;
 mod debug;
 mod exceptions;
 mod files;
+#[cfg(feature = "network")]
+mod mmio;
+#[cfg(feature = "network")]
+mod net;
 #[cfg(feature = "qemu-test")]
 mod qemu_test;
 #[cfg(feature = "qemu-test")]
@@ -22,14 +26,21 @@ extern "C" fn kernel_main() -> ! {
     let serial = unsafe { debug::com1() };
     let mut files = files::BootFiles::new(serial);
     let result = files::boot_program(&mut files);
-    #[cfg(feature = "qemu-test")]
+    #[cfg(feature = "network")]
+    {
+        if let Err(error) = result {
+            panic!("boot bytecode failed: {error:?}");
+        }
+        net::run(&mut files)
+    }
+    #[cfg(all(not(feature = "network"), feature = "qemu-test"))]
     {
         if result != Ok(123) {
             qemu_test::finish(false);
         }
         qemu_test::run(&mut files)
     }
-    #[cfg(not(feature = "qemu-test"))]
+    #[cfg(all(not(feature = "network"), not(feature = "qemu-test")))]
     {
         if let Err(error) = result {
             panic!("boot bytecode failed: {error:?}");

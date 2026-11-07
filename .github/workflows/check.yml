@@ -9,6 +9,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install QEMU
-        run: sudo apt-get update && sudo apt-get install --yes qemu-system-x86
+        run: sudo apt-get update && sudo apt-get install --yes qemu-system-x86 python3
       - name: Run repository checks
         run: ./n --ci ci

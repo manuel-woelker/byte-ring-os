@@ -9,7 +9,10 @@ if [[ ! -f "${sysroot}/lib/rustlib/x86_64-unknown-none/lib/libcore.rlib" ]] &&
 fi
 build_arguments=()
 image_directory="target/x86_64-unknown-none/release"
-if [[ "${1:-}" == "--qemu-test" ]]; then
+if [[ "${1:-}" == "--network" ]]; then
+  build_arguments+=(--features network --target-dir target/network)
+  image_directory="target/network/x86_64-unknown-none/release"
+elif [[ "${1:-}" == "--qemu-test" ]]; then
   test_case="${2:-boot}"
   case "${test_case}" in
     boot) features=qemu-test ;;

@@ -39,7 +39,7 @@ unit-testable and limits the initial attack surface.
 
 The existing kernel has boot, faults, HAL port I/O, a bytecode VM, and COM1, but
 no PCI, DMA, MMIO mapping, or networking. The implementation follows the
-[networking plan](<../plans/2026-11-07 Virtio networking and static IPv4 ping.md>).
+[networking plan](<../plans/completed/2026-11-07 Virtio networking and static IPv4 ping.md>).
 QEMU user-mode NAT does not provide inbound host ICMP forwarding.
 
 ## Consequences

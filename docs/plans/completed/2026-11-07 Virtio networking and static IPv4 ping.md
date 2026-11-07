@@ -1,7 +1,9 @@
 # Virtio networking and static IPv4 ping
 
-Status: implementing. Decisions are recorded in
-[DR-005](<../decisions/DR-005 Use polled virtio networking with static IPv4.md>).
+Status: complete. Automated tests and the live demo pass. Optional host TAP
+verification was unavailable (no host QEMU or `/dev/net/tun`). Decisions are
+recorded in
+[DR-005](<../../decisions/DR-005 Use polled virtio networking with static IPv4.md>).
 
 ## Goal and scope
 
@@ -187,26 +189,26 @@ TAP workflow rather than broadening container privileges.
       topology decisions in `docs/decisions/`; link the record here.
 - [x] Extend HAL access widths/MMIO and test backends; verify bounds, alignment,
       access ordering, and independent test state.
-- [ ] Add PCI discovery/capability validation and bounded MMIO mappings without
+- [x] Add PCI discovery/capability validation and bounded MMIO mappings without
       changing unrelated boot behavior.
-- [ ] Add static DMA ownership primitives and split virtqueues with tests for
+- [x] Add static DMA ownership primitives and split virtqueues with tests for
       completion, exhaustion, invalid used entries, wraparound, and buffer
       reuse.
-- [ ] Implement modern virtio-net negotiation, RX/TX, MAC reading, and bounded
+- [x] Implement modern virtio-net negotiation, RX/TX, MAC reading, and bounded
       initialization/error handling.
 - [x] Implement portable Ethernet/ARP/IPv4/ICMP parsing, checksums, and bounded
       echo replies with negative-input tests.
-- [ ] Integrate a network-enabled boot image, static IP configuration, polling
+- [x] Integrate a network-enabled boot image, static IP configuration, polling
       loop, counters, and bounded stdout logging.
-- [ ] Add independent packet-peer test tooling and compatible host/container
+- [x] Add independent packet-peer test tooling and compatible host/container
       Unix-socket launch/cleanup support.
-- [ ] Add `net-test`, `demo-ping`, and `run-net` tasks; keep optional TAP setup
+- [x] Add `net-test`, `demo-ping`, and `run-net` tasks; keep optional TAP setup
       documented and explicit. Add rootless `net-test` to `./n check` and CI.
-- [ ] Update README, architecture, development instructions, and failure/log
+- [x] Update README, architecture, development instructions, and failure/log
       expectations. Keep application networking APIs explicitly unimplemented.
-- [ ] Run required host checks, native driver checks, and all existing/new QEMU
+- [x] Run required host checks, native driver checks, and all existing/new QEMU
       scenarios. Run `./n check` and commit each completed unit of work.
-- [ ] Complete demo and documented TAP verification where host permissions and
+- [x] Complete demo and documented TAP verification where host permissions and
       facilities are available; report any unavailable manual checks explicitly.
       Move this plan to `completed/` only after required verification is done.
 
@@ -275,3 +277,42 @@ claims require later native/KVM measurements; TCG tests establish correctness.
 - [QEMU stream backend, available since 7.2](https://www.qemu.org/docs/master/interop/qemu-qmp-ref.html#object-QMP-netdevstreamoptions)
 - [ARP: RFC 826](https://www.rfc-editor.org/rfc/rfc826)
 - [ICMP echo: RFC 792](https://www.rfc-editor.org/rfc/rfc792)
+
+## Implementation results so far
+
+- HAL/packet protocol units committed independently after passing `./n check`.
+- Modern PCI discovery, uncached BAR mapping, static DMA, virtqueue ownership,
+  and the actual QEMU packet path pass host/native checks and `./n net-test`.
+- `./n net-wrap-test` passed 65,541 echo exchanges, exercising actual RX/TX
+  16-bit index wraparound. `./n demo-ping` passed with live serial logs.
+- QEMU 7.2 leaves modern num_buffers zero without mergeable RX. Accept zero or
+  one only in this single-buffer mode; retain the modern 12-byte header and
+  all offload/length/ownership checks. Newer spec-conforming devices return one.
+- Rootless Podman was exercised through its Docker-compatible CLI. Host QEMU
+  and `/dev/net/tun` are absent here, so optional host TAP ping cannot run.
+
+## Final verification and implementation notes
+
+- `./n check` covers 66 host tests, native network Clippy, eight existing
+  boot/VM/fault QEMU cases, and the independent network integration test.
+- `./n net-test`: ARP, 97 echo replies, independent checksum/payload/address
+  checks, invalid packet rejection, subsequent valid traffic, and serial logs.
+- `./n net-wrap-test`: ARP and 65,541 replies, crossing both actual RX and TX
+  16-bit ring indices. Kept separate from routine CI to bound CI duration.
+- `./n demo-ping`: four visible request/reply exchanges plus recovery check.
+- Host tests cover malformed capabilities/BAR windows, missing devices and
+  multifunction discovery, negotiation refusal, invalid notify offsets, full
+  queues, invalid/duplicate completion IDs, lengths, wraparound, and packet
+  parsing/checksums. No allocator or unsafe code was added to the drivers crate.
+- Static packet responder chosen over a general networking stack. Source IPv4
+  addresses are restricted to valid peers on the configured /24 segment.
+- Test peer artifacts are per-run and include bounded packet hex traces. The
+  only cross-UID writable object is a random test socket; its containing
+  directory and the container's workspace stay non-writable.
+- Optional manual TAP setup is documented but was not performed: this
+  environment has neither host QEMU nor `/dev/net/tun`. No host interfaces,
+  routes, bridges, or firewall rules were changed. Standalone Docker/host-QEMU
+  comparison was also unavailable; rootless Podman's container path passed.
+- The required automated criteria are complete. Remaining asynchronous device
+  interrupts, general sockets, and application SQ/CQ integration are explicit
+  exclusions rather than unfinished work in this plan.
