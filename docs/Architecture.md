@@ -19,6 +19,8 @@
   allocation-free bytecode encoder, verifier, interpreter, file-service
   boundary, and portable exception diagnostics. The VM supports RETURN with an
   immediate result and WRITE with an immediate file handle and inline bytes.
+  Portable ELF validation and the synchronous queue codec/engine support the
+  separate userspace image.
 
 See
 [DR-001](<decisions/DR-001 Select the hardware abstraction layer at compile time.md>)
@@ -54,11 +56,12 @@ separate emulated test device only after transmission succeeds. The normal
 kernel image does not contain that test exit path.
 
 See [DR-002](<decisions/DR-002 Report fatal CPU exceptions through COM1.md>) for
-exception handling. All exception handlers halt, including breakpoints; there
-is no recovery or return ABI yet. Assembly normalizes CPU error-code frames and
-captures CR2 before calling Rust. Diagnostic code has a recursion guard and
-bounded UART polling. Faults before IDT installation and failures in the
-reporting path itself may still prevent output.
+exception handling. Kernel exceptions halt, including breakpoints. The userspace
+image contains ordinary user faults by terminating the current program; NMI,
+double fault, and machine check remain fatal. Assembly normalizes CPU error-code
+frames and captures CR2 before calling Rust. Diagnostic code has a recursion
+guard and bounded UART polling. Faults before IDT installation and failures in
+the reporting path itself may still prevent output.
 
 QEMU fault images execute real divide, invalid-opcode, selector, unmapped-page,
 and invalid-stack faults, plus a Rust panic. The guest checks vector/error
@@ -165,7 +168,30 @@ recovery, and request timeouts. See
 and its timer successor
 [DR-008](<decisions/DR-008 Use the local APIC for deadline wakeups.md>).
 
-## Intended interaction model
+## Userspace image
+
+The separate `userspace` feature loads an embedded static Rust ELF and enters
+ring 3. It has private page tables with supervisor kernel mappings, user W^X,
+NX, CR0.WP, guarded stack, protected queue/control pages, and fresh zeroed
+backing per instance. A TSS kernel stack and native SYSCALL entry save return
+context and FP/SIMD state before invoking bounded Rust queue processing.
+Validated IRET returns to the user. Only stdout handle 0 is granted.
+
+Each instance owns a fixed four-slot SQ/CQ pair with 256-byte programs. The
+kernel keeps private authoritative cursors, reserves CQ space, copies before
+validation/execution, and publishes correlated results. Native syscall 0
+progresses the pair; syscall 1 exits as a lifecycle operation. File effects
+remain bytecode WRITE. No general user buffer pointers are accepted.
+
+Ordinary user faults, invalid return context, and an approximately one-second
+APIC execution budget terminate only that instance and restore the boot
+context. Kernel faults remain fatal. Execution is one program at a time with
+static backing, without a scheduler, allocator, or concurrent networking.
+See [Userspace](Userspace.md) and
+[DR-009](<decisions/DR-009 Run isolated native programs through queue syscalls.md>)
+for loading, limits, ownership, privilege transitions, tests, and exclusions.
+
+## Application interaction model
 
 Each user application has one initial submission queue (SQ) and completion
 queue (CQ), established at application startup. It writes bounded bytecode
@@ -179,13 +205,15 @@ This is the accepted architecture in
 [DR-003](<decisions/DR-003 Submit kernel bytecode through application queue pairs.md>).
 See [the kernel API design](Kernel%20API.md) for entry fields, ownership,
 publication, backpressure, syscall progress, execution limits, and errors.
-The bytecode/service layer is implemented and described in
+The queue/CPU boundary is implemented by the fixed userspace profile. The
+bytecode/service layer is described in
 [Bytecode API](Bytecode%20API.md) and
 [DR-004](<decisions/DR-004 Write through file handles with typed bytecode operands.md>).
 The boot file context grants only stdout handle 0, backed by the UART driver;
 the VM can dispatch other handle numbers through a different context. Whole
 program validation precedes file effects. Memory-reference mode is reserved
-and rejected. Queues, userspace, and CPU syscall entry remain unimplemented.
+and rejected. General process creation, dynamic queue setup, scheduling, and
+application networking remain unimplemented.
 
 The initial queues are single-producer/single-consumer and programs complete
 in submission order before the syscall returns. There is no background poller,
@@ -202,14 +230,14 @@ mappings must precede isolated applications.
 
 ## Next milestones
 
-1. Establish explicit memory permissions and synchronization before introducing
-   concurrent device access; extend interrupt routing when SMP is introduced.
-2. Specify the wire codec for the accepted queue API and implement bounded
-   rings, ownership, CQ backpressure, and hostile-control-state tests.
-3. Connect the existing bytecode interpreter to queue consumption and map
-   validation, limit, file, and short-write errors into CQ completions.
-4. Add application isolation and syscall entry/return, connect a bounded stdout
-   file handle end to end, then measure batching and tail latency.
+1. Introduce an explicit process table and resumable scheduling before allowing
+   concurrent user execution or interleaving networking with applications.
+2. Establish general allocation, page ownership, user-copy, and address-space
+   teardown contracts beyond the fixed embedded image.
+3. Add file-backed ELF loading and application services while retaining private
+   capability checks, queue backpressure, and copy-before-validation.
+4. Measure batching, syscall overhead, fairness, and tail latency with actual
+   applications before optimizing entry/return or adding zero-copy transport.
 
 Record consequential choices in [decision records](decisions/). Keep this page
 about current boundaries and intended contracts; do not describe proposed

@@ -9,7 +9,17 @@ if [[ ! -f "${sysroot}/lib/rustlib/x86_64-unknown-none/lib/libcore.rlib" ]] &&
 fi
 build_arguments=()
 image_directory="target/x86_64-unknown-none/release"
-if [[ "${1:-}" == "--http" ]]; then
+if [[ "${1:-}" == "--userspace" || "${1:-}" == "--userspace-test" ]]; then
+  user_arguments=(-p byte-ring-user-demo --target x86_64-unknown-none --release --target-dir target/user \
+    --config "target.x86_64-unknown-none.rustflags=[\"--sysroot\", \"${sysroot}\", \"-C\", \"relocation-model=static\", \"-C\", \"code-model=small\", \"-C\", \"link-arg=-T${repository_root}/crates/user-demo/linker.ld\", \"-C\", \"link-arg=-zmax-page-size=4096\"]")
+  ./t cargo build "${user_arguments[@]}"
+  if [[ "${2:-}" == "--clippy" ]]; then
+    ./t clippy clippy "${user_arguments[@]}" -- -D warnings
+  fi
+  features="${1#--}"
+  build_arguments+=(--features "${features}" --target-dir "target/${features}")
+  image_directory="target/${features}/x86_64-unknown-none/release"
+elif [[ "${1:-}" == "--http" ]]; then
   build_arguments+=(--features http --target-dir target/http)
   image_directory="target/http/x86_64-unknown-none/release"
 elif [[ "${1:-}" == "--network" ]]; then

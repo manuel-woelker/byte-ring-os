@@ -35,6 +35,13 @@ name = "byte-ring-kernel-core"
 version = "0.1.0"
 
 [[package]]
+name = "byte-ring-user-demo"
+version = "0.1.0"
+dependencies = [
+ "byte-ring-kernel-core",
+]
+
+[[package]]
 name = "byteorder"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

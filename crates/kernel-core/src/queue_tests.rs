@@ -135,6 +135,10 @@ fn hostile_cursor_movement_disables_pair_and_bad_arguments_consume_nothing() {
     );
     memory.tail = 0;
     assert_eq!(
+        pair.enter(&mut memory, &mut files, 0),
+        (0, Stop::BadArgument)
+    );
+    assert_eq!(
         pair.enter(&mut memory, &mut files, 4),
         (0, Stop::QueueFault)
     );

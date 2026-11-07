@@ -1,24 +1,14 @@
 //! Single-CPU polled network host; logs ordinary requests through stdout WRITE.
 
-use super::files::BootFiles;
+#[cfg(not(feature = "http"))]
+use super::files::{BootFiles, log};
 #[cfg(not(feature = "http"))]
 use byte_ring_drivers::virtqueue::Error as QueueError;
 use byte_ring_drivers::{pci::Pci, virtio_net::Net, virtqueue::DMA_SIZE};
 use byte_ring_hal::{memory::Memory, port::PortRange};
 #[cfg(not(feature = "http"))]
 use byte_ring_kernel_core::network::{MAX_FRAME, Network};
-use byte_ring_kernel_core::{
-    bytecode::{
-        builder::ProgramBuilder,
-        vm::{Limits, execute},
-    },
-    file::STDOUT,
-};
-use core::{
-    cell::UnsafeCell,
-    fmt::{self, Write},
-};
-
+use core::{cell::UnsafeCell, fmt};
 pub const IP: [u8; 4] = [192, 0, 2, 2];
 #[repr(C, align(4096))]
 struct Dma([u8; DMA_SIZE]);
@@ -28,38 +18,6 @@ struct DmaCell(UnsafeCell<Dma>);
 unsafe impl Sync for DmaCell {}
 static RX: DmaCell = DmaCell(UnsafeCell::new(Dma([0; DMA_SIZE])));
 static TX: DmaCell = DmaCell(UnsafeCell::new(Dma([0; DMA_SIZE])));
-
-struct Text {
-    bytes: [u8; 256],
-    length: usize,
-}
-impl Write for Text {
-    fn write_str(&mut self, text: &str) -> fmt::Result {
-        let end = self.length.checked_add(text.len()).ok_or(fmt::Error)?;
-        let destination = self.bytes.get_mut(self.length..end).ok_or(fmt::Error)?;
-        destination.copy_from_slice(text.as_bytes());
-        self.length = end;
-        Ok(())
-    }
-}
-pub(super) fn log(files: &mut BootFiles, args: fmt::Arguments<'_>) {
-    let mut text = Text {
-        bytes: [0; 256],
-        length: 0,
-    };
-    if text.write_fmt(args).is_err() {
-        return;
-    }
-    let mut bytes = [0; 300];
-    let mut builder = ProgramBuilder::new(&mut bytes);
-    if builder.write(STDOUT, &text.bytes[..text.length]).is_err() || builder.return_imm(0).is_err()
-    {
-        return;
-    }
-    if let Ok(program) = builder.finish() {
-        let _ = execute(program, files, Limits::default());
-    }
-}
 
 pub(super) enum InitError {
     Pci(byte_ring_drivers::pci::Error),

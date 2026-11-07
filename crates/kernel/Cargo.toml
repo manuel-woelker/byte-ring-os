@@ -11,6 +11,8 @@ test = false
 bench = false
 
 [features]
+userspace = []
+userspace-test = ["userspace"]
 network = []
 http = ["network", "dep:smoltcp", "byte-ring-drivers/tcp"]
 qemu-test = []

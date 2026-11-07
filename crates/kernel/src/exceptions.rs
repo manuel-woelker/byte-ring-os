@@ -4,7 +4,7 @@ mod tables;
 
 use byte_ring_kernel_core::exception::{ExceptionFrame, write_report};
 
-core::arch::global_asm!(include_str!("exceptions/entry.S"), options(att_syntax));
+core::arch::global_asm!(include_str!("exceptions/entry.S"), userspace = const (cfg!(feature = "userspace") as u8), options(att_syntax));
 
 /// Install the initial exception tables before initializing device drivers.
 ///
@@ -17,6 +17,10 @@ pub unsafe fn initialize() {
 
 #[unsafe(no_mangle)]
 extern "C" fn exception_dispatch(frame: &ExceptionFrame) -> ! {
+    #[cfg(feature = "userspace")]
+    if frame.code_segment & 3 == 3 && !matches!(frame.vector, 2 | 8 | 18) {
+        super::userspace::fault(frame);
+    }
     super::debug::begin_fatal();
     // SAFETY: interrupt gates disable interrupts, this kernel is single-core,
     // and the interrupted owner can never resume after this fatal handler.

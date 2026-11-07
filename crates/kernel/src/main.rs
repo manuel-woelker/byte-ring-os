@@ -1,19 +1,23 @@
 #![no_std]
 #![no_main]
 
-#[cfg(feature = "network")]
+#[cfg(any(feature = "network", feature = "userspace"))]
 mod apic;
 mod boot;
-#[cfg(feature = "http")]
+#[cfg(any(feature = "http", feature = "userspace"))]
 mod clock;
 mod debug;
 mod exceptions;
 mod files;
+#[cfg(feature = "userspace")]
+mod userspace;
+#[cfg(all(feature = "userspace", feature = "network"))]
+compile_error!("userspace and network images are separate");
 #[cfg(feature = "http")]
 mod http;
 #[cfg(feature = "network")]
 mod idle;
-#[cfg(feature = "network")]
+#[cfg(any(feature = "network", feature = "userspace"))]
 mod mmio;
 #[cfg(feature = "network")]
 mod net;
@@ -34,6 +38,13 @@ extern "C" fn kernel_main() -> ! {
     let serial = unsafe { debug::com1() };
     let mut files = files::BootFiles::new(serial);
     let result = files::boot_program(&mut files);
+    #[cfg(feature = "userspace")]
+    {
+        if let Err(error) = result {
+            panic!("boot bytecode failed: {error:?}");
+        }
+        userspace::run(files)
+    }
     #[cfg(feature = "network")]
     {
         if let Err(error) = result {
@@ -55,7 +66,11 @@ extern "C" fn kernel_main() -> ! {
         }
         qemu_test::run(&mut files)
     }
-    #[cfg(all(not(feature = "network"), not(feature = "qemu-test")))]
+    #[cfg(all(
+        not(feature = "network"),
+        not(feature = "userspace"),
+        not(feature = "qemu-test")
+    ))]
     {
         if let Err(error) = result {
             panic!("boot bytecode failed: {error:?}");
@@ -74,7 +89,12 @@ fn panic(information: &PanicInfo<'_>) -> ! {
     let reported = write!(serial, "Byte Ring OS: PANIC: {information}\r\n").is_ok();
     #[cfg(feature = "qemu-test")]
     qemu_test::panic(reported);
-    #[cfg(not(feature = "qemu-test"))]
+    #[cfg(feature = "userspace-test")]
+    {
+        let _ = reported;
+        userspace::test_failure();
+    }
+    #[cfg(all(not(feature = "qemu-test"), not(feature = "userspace-test")))]
     {
         let _ = reported;
         halt()

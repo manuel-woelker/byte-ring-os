@@ -50,6 +50,12 @@ exception_common:
     cld
     movq %cr2, %rax
     pushq %rax
+    .if {userspace}
+    testb $3, 32(%rsp)
+    jz 1f
+    fxrstor64 KERNEL_FX_STATE(%rip)
+1:
+    .endif
     movq %rsp, %rdi
     andq $-16, %rsp
     call exception_dispatch

@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/kernel", "crates/kernel-core", "crates/hal", "crates/drivers"]
+members = ["crates/kernel", "crates/kernel-core", "crates/hal", "crates/drivers", "crates/user-demo"]
 default-members = ["crates/kernel-core"]
 resolver = "3"
 

@@ -36,6 +36,15 @@ recipe "default" {
   task "run-http" description="Serve the embedded page over a preconfigured host TAP" direct-output=#true {
     run shell="./scripts/run-network.sh --http"
   }
+  task "userspace-test" description="Verify ring-3 queues, isolation, watchdog, and recovery in QEMU" {
+    run shell="./scripts/test-userspace.sh"
+  }
+  task "run-user" description="Boot the embedded Rust ring-3 queue demo" direct-output=#true {
+    run shell="./scripts/build-kernel.sh --userspace && ./scripts/qemu.sh -machine pc -accel tcg -cpu qemu64 -m 64M -smp 1 -display none -monitor none -serial stdio -no-reboot -no-shutdown -kernel target/userspace/x86_64-unknown-none/release/byte-ring-kernel.bin"
+  }
+  task "userspace-clippy" description="Lint the native userspace kernel and Rust program" {
+    run shell="./scripts/build-kernel.sh --userspace --clippy && ./scripts/build-kernel.sh --userspace-test --clippy"
+  }
   task "http-test" description="Verify HTTP and TCP recovery with an independent QEMU peer" {
     depends-on "build-kernel"
     run shell="python3 ./scripts/test-http.py"
@@ -77,6 +86,8 @@ recipe "default" {
     depends-on "network-clippy"
     depends-on "http-clippy"
     depends-on "http-test"
+    depends-on "userspace-test"
+    depends-on "userspace-clippy"
     run shell="printf 'Task outcome: repository checks passed\n'"
   }
   task "ci" description="Run continuous integration checks" {

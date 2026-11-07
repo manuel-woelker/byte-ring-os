@@ -52,11 +52,11 @@ impl Pair {
         files: &mut impl FileWriter,
         requested: u64,
     ) -> (u64, Stop) {
-        if self.disabled {
-            return (0, Stop::QueueFault);
-        }
         if requested == 0 {
             return (0, Stop::BadArgument);
+        }
+        if self.disabled {
+            return (0, Stop::QueueFault);
         }
         let tail = memory.submission_tail();
         let drained = memory.completion_tail();

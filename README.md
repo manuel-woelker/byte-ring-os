@@ -13,7 +13,8 @@ completion queue (CQ). Applications fill the SQ with bytecode programs and use
 CPU `syscall` to request a bounded synchronous batch. The kernel copies,
 validates, and executes programs, then publishes correlated CQ results. See
 [the kernel API design](docs/Kernel%20API.md) for the intended contract; this
-application interface is not implemented yet.
+application interface is implemented for the fixed embedded userspace profile;
+see [Userspace](docs/Userspace.md).
 
 These are research goals, not demonstrated guarantees. Batching may reduce
 boundary crossings, but verification, scheduling, synchronization, and copying
@@ -31,12 +32,13 @@ ungranted handle do not emit output. CPU faults print exception names,
 register context, error codes, and page-fault address/access details before
 halting. Double faults use an emergency stack.
 
-Boot support is a minimal Multiboot v1 adapter with an initial identity map and
-stack, plus fatal exception handling. There is no memory manager, ring buffer,
-userspace, or CPU syscall entry yet. Network IRQs wake a single foreground
-owner; there is no scheduler. A small bytecode VM now supports RETURN and
-generic WRITE, with stdout handle 0 bound to COM1 in the boot context. See
-[Bytecode API](docs/Bytecode%20API.md).
+Boot support is a minimal Multiboot v1 adapter with an initial identity map,
+stack, and fatal kernel exception handling. There is no general memory manager
+or scheduler. A separate userspace image executes a protected ring-3 Rust ELF
+using native SYSCALL, SQ/CQ, and bytecode WRITE to stdout. User faults and a
+hardware execution budget terminate the instance while preserving the kernel.
+The user and network images remain separate. See [Userspace](docs/Userspace.md)
+and [Bytecode API](docs/Bytecode%20API.md).
 
 A separate network image now supports modern virtio-net, static IPv4
 `192.0.2.2/24`, ARP, and logged ICMP echo replies. Use `./n demo-ping` for an
@@ -60,6 +62,8 @@ downloads tools and Rust components into the ignored `.cache/` directory. Rust
 and the bare-metal standard library are pinned together at 1.99.0.
 
 ```sh
+./n run-user       # Embedded ring-3 Rust program using SQ/CQ and bytecode
+./n userspace-test # Privilege, queue, FP/register, fault, and watchdog checks
 ./n run-http       # Serve the embedded page on a preconfigured host TAP
 ./n http-test      # Rootless HTTP, TCP retransmission, and recovery checks
 ./n demo-ping      # Static-IP guest logs and verified synthetic ping replies

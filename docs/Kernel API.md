@@ -2,7 +2,8 @@
 
 Status: the version-one bytecode interpreter and boot stdout adapter are
 implemented. Portable queue processing and the fixed experimental queue codec
-are implemented; native applications and CPU entry remain the current target.
+are implemented with native ring-3 programs and SYSCALL entry in the userspace
+image. See [Userspace](Userspace.md) for fixed mappings and lifecycle.
 See [Bytecode API](Bytecode%20API.md) for the executable program format.
 [DR-003](<decisions/DR-003 Submit kernel bytecode through application queue pairs.md>)
 records the chosen boundary. Details below describe the first implementation
@@ -109,7 +110,7 @@ current application's default pair. The kernel snapshots the published SQ tail
 at entry, clamps positive requested work to its per-entry maximum, and processes
 at most that snapshot. Submissions published later wait for another entry.
 
-Proposed x86_64 register convention:
+Implemented x86_64 register convention:
 
 | Register | Meaning |
 | --- | --- |
@@ -190,10 +191,10 @@ execution in testable `no_std` code. Keep the privileged entry, user mappings,
 application context, and native service adapters in the kernel. Continue using
 the compile-time HAL for device I/O.
 
-Before real applications run, add user/supervisor mappings, a safe user-copy
-boundary, application identity, trusted kernel stacks, syscall entry/return, and
-user-fault containment. The current permissive bootstrap mapping and globally
-fatal CPU exception policy are not sufficient for isolated applications.
+The fixed userspace image implements protected mappings, per-instance queue
+identity, trusted stacks, bounded known-page copies, CPU entry/return, and
+user-fault containment. General process creation and arbitrary user-copy remain
+future work. Kernel supervisor mappings still need broader W^X hardening.
 
 Verify queue wraparound, full/empty behavior, invalid index advances, CQ
 backpressure, correlation and ordering, concurrent mutation, invalid bytecode,
@@ -217,10 +218,10 @@ Each queue page has an aligned u64 counter at 0 and slots beginning at 64.
 The SQ consumer and CQ consumer each occupy separate pages. Stop values are
 Idle=0, BatchLimit=1, CompletionFull=2, Busy=3 (reserved), QueueFault=4, and
 BadArgument=5. A disabled pair remains disabled until process teardown.
-Native syscall 1 is reserved for process exit with status in RDI; it is a
+Native syscall 1 implements process exit with status in RDI; it is a
 lifecycle operation, while all file effects continue through bytecode.
 
-The planned bootstrap descriptor is a 128-byte immutable record identified by
+The bootstrap descriptor is a 128-byte immutable record identified by
 `BRUSR001`, version u32=1 at 8, page size u32 at 12, SQ/SQ-head/CQ/CQ-consumer
 addresses u64 at 16/24/32/40, capacity/program/batch u32 at 48/52/56, image base
 u64 at 64, stack bounds u64 at 72/80, stdout handle u64 at 88, and VM

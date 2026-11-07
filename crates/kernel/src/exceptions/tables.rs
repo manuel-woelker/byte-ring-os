@@ -68,13 +68,18 @@ struct BootCell<T>(UnsafeCell<T>);
 unsafe impl<T> Sync for BootCell<T> {}
 
 static IDT: BootCell<[Gate; 256]> = BootCell(UnsafeCell::new([Gate::EMPTY; 256]));
-static GDT: BootCell<[u64; 5]> = BootCell(UnsafeCell::new([
-    0,
-    0x00af9a000000ffff,
-    0x00cf92000000ffff,
-    0,
-    0,
-]));
+const GDT_ENTRIES: usize = if cfg!(feature = "userspace") { 7 } else { 5 };
+static GDT: BootCell<[u64; GDT_ENTRIES]> = BootCell(UnsafeCell::new({
+    let mut table = [0; GDT_ENTRIES];
+    table[1] = 0x00af9a000000ffff;
+    table[2] = 0x00cf92000000ffff;
+    #[cfg(feature = "userspace")]
+    {
+        table[5] = 0x00cff2000000ffff;
+        table[6] = 0x00affa000000ffff;
+    }
+    table
+}));
 static TSS: BootCell<TaskStateSegment> = BootCell(UnsafeCell::new(TaskStateSegment {
     reserved0: 0,
     rsp: [0; 3],
@@ -91,6 +96,10 @@ static MACHINE_CHECK_STACK: BootCell<Stack> = BootCell(UnsafeCell::new(Stack([0;
 unsafe extern "C" {
     static exception_stubs: [u64; 32];
     static unexpected_interrupt_stub: u64;
+    #[cfg(feature = "userspace")]
+    fn user_timer_entry();
+    #[cfg(feature = "userspace")]
+    fn user_spurious_entry();
     #[cfg(feature = "network")]
     static irq_stubs: [u64; 16];
     #[cfg(feature = "network")]
@@ -107,6 +116,12 @@ pub(super) unsafe fn install() {
     // disabled. All objects have static lifetime and mapped kernel addresses.
     unsafe {
         let tss = TSS.0.get();
+        #[cfg(feature = "userspace")]
+        addr_of_mut!((*tss).rsp).write_unaligned([
+            super::super::userspace::kernel_stack_top(),
+            0,
+            0,
+        ]);
         addr_of_mut!((*tss).ist).write_unaligned([
             DOUBLE_FAULT_STACK.0.get() as u64 + size_of::<Stack>() as u64,
             NMI_STACK.0.get() as u64 + size_of::<Stack>() as u64,
@@ -122,7 +137,7 @@ pub(super) unsafe fn install() {
         gdt[3] = limit | ((base & 0xffffff) << 16) | (0x89 << 40) | (((base >> 24) & 0xff) << 56);
         gdt[4] = base >> 32;
         let gdtr = DescriptorPointer {
-            limit: (size_of::<[u64; 5]>() - 1) as u16,
+            limit: (size_of::<[u64; GDT_ENTRIES]>() - 1) as u16,
             base: GDT.0.get() as u64,
         };
         asm!("lgdt [{}]", in(reg) &gdtr, options(readonly, nostack, preserves_flags));
@@ -145,6 +160,12 @@ pub(super) unsafe fn install() {
                 addr_of!(apic_spurious_stub).read()
             } else {
                 address
+            };
+            #[cfg(feature = "userspace")]
+            let address = match vector {
+                48 => user_timer_entry as *const () as u64,
+                255 => user_spurious_entry as *const () as u64,
+                _ => address,
             };
             let ist = match vector {
                 8 => 1,

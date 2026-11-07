@@ -46,7 +46,7 @@ pub fn run(files: &mut BootFiles) -> ! {
     let mut position = 0;
     let mut started: Option<i64> = None;
     let mut log_budget = 64;
-    net::log(
+    super::files::log(
         files,
         format_args!("HTTP ready http://192.0.2.2:8080/ request_limit=1024 connections=1\r\n"),
     );
@@ -105,7 +105,7 @@ pub fn run(files: &mut BootFiles) -> ! {
                     && log_budget > 0
                 {
                     log_budget -= 1;
-                    net::log(
+                    super::files::log(
                         files,
                         format_args!("HTTP response {:?}\r\n", response.status),
                     );

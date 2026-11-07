@@ -34,11 +34,11 @@ dynamic linker, TLS, general user pointers, or networking in this image.
 ## Checklist
 
 - [x] Record DR-009 and implement tested ELF validation and queue ABI/engine.
-- [ ] Implement Rust userspace demo, page mappings, privilege transitions,
+- [x] Implement Rust userspace demo, page mappings, privilege transitions,
   trusted entry/return, fault containment, and APIC budget.
-- [ ] Add demo/integration/lint tasks, adversarial QEMU checks, and current
+- [x] Add demo/integration/lint tasks, adversarial QEMU checks, and current
       docs.
-- [ ] Run `./n check`, commit completed units, and move this plan to completed.
+- [x] Run `./n check`, commit completed units, and move this plan to completed.
 
 ## Verification and assumptions
 
@@ -53,3 +53,24 @@ The supported platform is a single-core QEMU x86_64 PC with NX, SYSCALL, and
 local xAPIC. Network and userspace images are separate; this milestone does not
 make the HTTP server a userspace process. Fixed ELF/address limits are an
 experimental ABI, not POSIX compatibility or a production security claim.
+
+## Results
+
+Implemented the fixed userspace profile from
+[DR-009](<../../decisions/DR-009 Run isolated native programs through queue syscalls.md>).
+The portable ELF and queue foundation was committed separately as `79fcc6d`.
+The native implementation boots an independently linked Rust ELF at ring 3,
+prints through bytecode WRITE and SQ/CQ, validates completions, and exits.
+
+`./n check` passes with the existing host/boot/network/HTTP suite and the new
+userspace native lint/integration tasks. QEMU runs 17 scenarios plus a fresh
+healthy instance: protected kernel/APIC/code/queue/descriptor access, stack
+guard and NX, I/O denial, queue cursor faults/backpressure, zero/unknown calls,
+invalid/noncanonical return stacks, FP/SIMD/MXCSR/general-register preservation,
+fresh BSS, and timeout recovery. The live `./n run-user` task also printed its
+ring-3 message and `Exited(0)`; its QEMU was stopped after inspection.
+
+Network and userspace images remain separate. The execution budget terminates
+rather than schedules native loops. Supervisor identity mappings still lack
+kernel W^X. General process tables, allocation, user-copy pointers, dynamic
+loading, and SMP remain future work, as documented in Userspace.md.
