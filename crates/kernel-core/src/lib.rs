@@ -4,3 +4,4 @@ pub mod bytecode;
 pub mod exception;
 pub mod file;
 pub mod limits;
+pub mod network;

@@ -194,7 +194,7 @@ TAP workflow rather than broadening container privileges.
       reuse.
 - [ ] Implement modern virtio-net negotiation, RX/TX, MAC reading, and bounded
       initialization/error handling.
-- [ ] Implement portable Ethernet/ARP/IPv4/ICMP parsing, checksums, and bounded
+- [x] Implement portable Ethernet/ARP/IPv4/ICMP parsing, checksums, and bounded
       echo replies with negative-input tests.
 - [ ] Integrate a network-enabled boot image, static IP configuration, polling
       loop, counters, and bounded stdout logging.
