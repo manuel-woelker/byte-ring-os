@@ -1,0 +1,8 @@
+[package]
+name = "byte-ring-hal"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[features]
+test-hal = []

@@ -1,0 +1,9 @@
+[global]
+cache-dir = ".cache/rumdl"
+respect-gitignore = true
+
+[MD013]
+line-length = 80
+reflow = true
+# Rust examples follow rustfmt rather than Markdown prose wrapping.
+code-blocks = false

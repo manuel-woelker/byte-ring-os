@@ -1,0 +1,53 @@
+recipe "default" {
+  task "format" description="Format Rust and Markdown" {
+    run shell="./t cargo fmt --all && ./t rumdl fmt ."
+  }
+  task "cargo-fmt" description="Check Rust formatting" {
+    run shell="./t cargo fmt --all -- --check"
+  }
+  task "check-markdown" description="Check Markdown formatting" {
+    run shell="./t rumdl check ."
+  }
+  task "cargo-check" description="Check portable kernel code on the host" {
+    run shell="./t cargo check -p byte-ring-kernel-core -p byte-ring-hal -p byte-ring-drivers --features byte-ring-drivers/test-hal --all-targets"
+  }
+  task "cargo-clippy" description="Lint portable kernel code" {
+    run shell="./t clippy clippy -p byte-ring-kernel-core -p byte-ring-hal -p byte-ring-drivers --features byte-ring-drivers/test-hal --all-targets -- -D warnings"
+  }
+  task "cargo-test" description="Run host tests with nextest" {
+    run shell="./t cargo-nextest nextest run -p byte-ring-kernel-core -p byte-ring-hal -p byte-ring-drivers --features byte-ring-drivers/test-hal"
+  }
+  task "cargo-doc-test" description="Run Rust documentation tests" {
+    run shell="./t cargo test -p byte-ring-kernel-core -p byte-ring-hal -p byte-ring-drivers --features byte-ring-drivers/test-hal --doc"
+  }
+  task "build-kernel" description="Build the freestanding x86_64 kernel ELF" {
+    run shell="./scripts/build-kernel.sh"
+  }
+  task "run" description="Boot QEMU with COM1 output on the host terminal" direct-output=#true {
+    depends-on "build-kernel"
+    run shell="./scripts/run-qemu.sh"
+  }
+  task "check-hal-config" description="Reject host native I/O and bare-metal test HALs" {
+    depends-on "build-kernel"
+    run shell="./scripts/check-hal-config.sh"
+  }
+  task "qemu-test" description="Boot the production HAL and verify COM1 output" {
+    depends-on "build-kernel"
+    run shell="./scripts/test-qemu.sh"
+  }
+  task "check" description="Run all repository checks" {
+    depends-on "cargo-fmt"
+    depends-on "check-markdown"
+    depends-on "cargo-check"
+    depends-on "cargo-clippy"
+    depends-on "cargo-test"
+    depends-on "cargo-doc-test"
+    depends-on "qemu-test"
+    depends-on "check-hal-config"
+    run shell="printf 'Task outcome: repository checks passed\n'"
+  }
+  task "ci" description="Run continuous integration checks" {
+    depends-on "check"
+    run shell="printf 'Task outcome: continuous integration checks passed\n'"
+  }
+}
