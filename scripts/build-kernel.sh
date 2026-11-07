@@ -10,10 +10,17 @@ fi
 build_arguments=()
 image_directory="target/x86_64-unknown-none/release"
 if [[ "${1:-}" == "--qemu-test" ]]; then
-  build_arguments+=(--features qemu-test --target-dir target/qemu-test)
-  image_directory="target/qemu-test/x86_64-unknown-none/release"
+  test_case="${2:-boot}"
+  case "${test_case}" in
+    boot) features=qemu-test ;;
+    divide|invalid-opcode|general-protection|page-fault|double-fault|panic)
+      features="qemu-${test_case}" ;;
+    *) printf 'Unknown QEMU test case: %s\n' "${test_case}" >&2; exit 2 ;;
+  esac
+  build_arguments+=(--features "${features}" --target-dir "target/qemu-test/${test_case}")
+  image_directory="target/qemu-test/${test_case}/x86_64-unknown-none/release"
 elif [[ "$#" != 0 ]]; then
-  printf 'Usage: %s [--qemu-test]\n' "$0" >&2
+  printf 'Usage: %s [--qemu-test [case]]\n' "$0" >&2
   exit 2
 fi
 ./t cargo build -p byte-ring-kernel --bin byte-ring-kernel \

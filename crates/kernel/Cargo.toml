@@ -12,6 +12,12 @@ bench = false
 
 [features]
 qemu-test = []
+qemu-divide = ["qemu-test"]
+qemu-invalid-opcode = ["qemu-test"]
+qemu-general-protection = ["qemu-test"]
+qemu-page-fault = ["qemu-test"]
+qemu-double-fault = ["qemu-test"]
+qemu-panic = ["qemu-test"]
 
 [dependencies]
 byte-ring-kernel-core = { path = "../kernel-core" }

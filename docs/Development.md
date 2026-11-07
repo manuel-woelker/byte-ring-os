@@ -37,13 +37,18 @@ the test backend refuses bare-metal builds. Keep these configurations in
 separate Cargo invocations. `./n check-hal-config` also verifies that both
 invalid backend selections fail with the intended configuration diagnostic.
 
-`./n qemu-test` builds a separate Multiboot test image, boots with software CPU
-emulation, checks the exact COM1 bytes including CRLF, and requires guest exit
-status 33. Timeout, panic, guest reset, missing output, and unexpected bytes all
-fail. Logs remain in `target/qemu-test/integration/`. Use a system
-`qemu-system-x86_64` or a working Docker-compatible CLI; the fallback container
-contains Debian Bookworm's QEMU and SeaBIOS. Emulator versions follow the host
-or container distribution rather than Tool Tool. CI installs QEMU explicitly.
+`./n qemu-test` builds separate Multiboot images for normal boot, divide error,
+invalid opcode, general protection, page fault, double fault, and Rust panic.
+Each boots with software CPU emulation and must exit with status 33 after guest
+validation. Normal boot checks the exact COM1 bytes including CRLF. Fault cases
+check the hardware frame and printed diagnostic; the double-fault case uses an
+invalid interrupted stack and must enter its emergency IST stack. Timeouts,
+unexpected panics, guest resets, missing output, invalid frames, and unexpected
+boot bytes all fail. Logs remain in `target/qemu-test/integration/<case>/`. Use
+a system `qemu-system-x86_64` or a working Docker-compatible CLI; the fallback
+container contains Debian Bookworm's QEMU and SeaBIOS. Emulator versions follow
+the host or container distribution rather than Tool Tool. CI installs QEMU
+explicitly.
 
 Add host behavior tests as ring buffers, the protocol, and the VM are
 implemented. Test invalid bytecode, stale capabilities, full queues, wraparound,
@@ -53,6 +58,19 @@ boot changes; linking an ELF alone does not demonstrate that the kernel boots.
 Keep unsafe blocks small and document their safety obligations. Shared-memory
 and device invariants need explicit tests and review; the compiler cannot prove
 correctness across an untrusted address-space boundary.
+
+To build one diagnostic image for investigation:
+
+```sh
+./scripts/build-kernel.sh --qemu-test page-fault
+```
+
+Its image is at
+`target/qemu-test/page-fault/x86_64-unknown-none/release/byte-ring-kernel.bin`.
+Test-only fault injection and emulator exit code are absent from normal builds.
+CPU exceptions are currently terminal; recovery and device interrupts remain
+future work. See
+[DR-002](<decisions/DR-002 Report fatal CPU exceptions through COM1.md>).
 
 ## Repository conventions
 

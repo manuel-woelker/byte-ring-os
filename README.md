@@ -18,10 +18,13 @@ The Rust workspace boots a minimal x86_64 kernel in QEMU and prints
 `Byte Ring OS: COM1 ready` through a polling 16550 UART driver. A HAL selected
 at compile time supplies native port I/O or a test-owned scripted backend.
 Host unit tests exercise the driver; a QEMU integration test exercises the
-native HAL and checks exact serial output.
+native HAL and checks exact serial output. CPU faults print exception names,
+register context, error codes, and page-fault address/access details before
+halting. Double faults use an emergency stack.
 
 Boot support is a minimal Multiboot v1 adapter with an initial identity map and
-stack. There is no memory manager, interrupt handling, ring buffer, or VM yet.
+stack, plus fatal exception handling. There is no memory manager, device
+interrupt handling, ring buffer, or VM yet.
 
 ## Development
 
@@ -39,7 +42,7 @@ standard library are pinned together at 1.99.0.
 ./n format         # Apply Rust and Markdown formatting
 ./n run            # Build and boot QEMU with live COM1 output; Ctrl+C stops it
 ./n build-kernel   # Build the kernel ELF and Multiboot .bin image
-./n qemu-test      # Boot the native HAL and check actual COM1 output
+./n qemu-test      # Check boot output, CPU fault diagnostics, and panic output
 ./t cargo test -p byte-ring-drivers --features test-hal
 ```
 

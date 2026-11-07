@@ -18,3 +18,17 @@ pub unsafe fn com1() -> SerialPort<'static> {
     let ports = unsafe { PortRange::new(COM1_BASE, REGISTER_COUNT) };
     SerialPort::new(ports, NonZeroU32::new(100_000).unwrap())
 }
+
+/// Claim the terminal diagnostic path without a lock or allocation. Recursive
+/// faults stop immediately rather than recursively formatting or taking COM1.
+pub fn begin_fatal() {
+    use core::sync::atomic::{AtomicBool, Ordering};
+
+    static ACTIVE: AtomicBool = AtomicBool::new(false);
+    if ACTIVE.swap(true, Ordering::Relaxed) {
+        #[cfg(feature = "qemu-test")]
+        super::qemu_test::finish(false);
+        #[cfg(not(feature = "qemu-test"))]
+        super::halt();
+    }
+}

@@ -10,9 +10,11 @@
   preserves bytes; `core::fmt::Write` uses the same path.
 - `crates/kernel` boots through a Multiboot v1 adapter, enters 64-bit Rust,
   writes `Byte Ring OS: COM1 ready` to COM1, and halts. Panics use a bounded
-  direct diagnostic path without a global logger lock.
+  direct diagnostic path without a global logger lock. CPU exceptions produce
+  a fatal register/error report; page faults include CR2 and access details.
 - `crates/kernel-core` contains portable `no_std` code. It currently defines an
-  initial instruction budget only; ring buffers and VM behavior are future work.
+  initial instruction budget plus portable exception frames and diagnostic
+  formatting; ring buffers and VM behavior are future work.
 
 See
 [DR-001](<decisions/DR-001 Select the hardware abstraction layer at compile time.md>)
@@ -32,9 +34,12 @@ and enters Rust with interrupts disabled. It identity maps the first GiB using
 supervisor-writable 2 MiB pages. This bootstrap map provides no W^X separation.
 
 The supported initial platform is QEMU's single-core x86_64 PC with COM1 at
-`0x3f8`. The adapter does not consume Multiboot discovery information or install
-an IDT. This is a development boot path, not a general hardware boot guarantee.
-There is no allocator, scheduler, SMP, interrupt handling, or memory manager.
+`0x3f8`. The adapter does not consume Multiboot discovery information. At the
+start of Rust entry, the kernel installs an IDT, GDT, and TSS for fatal
+exception diagnostics, with separate emergency stacks for double faults, NMIs,
+and machine checks. This is a development boot path, not a general hardware boot
+guarantee. There is no allocator, scheduler, SMP, device interrupt handling, or
+memory manager. Maskable interrupts remain disabled.
 
 Host tests enable the explicit `test-hal` feature. Production builds reject it;
 host builds reject the native I/O backend. Separate Cargo invocations avoid
@@ -42,6 +47,19 @@ unifying the test backend into the real kernel. The QEMU integration image uses
 the native HAL, checks its COM1 output byte for byte, and exits through a
 separate emulated test device only after transmission succeeds. The normal
 kernel image does not contain that test exit path.
+
+See [DR-002](<decisions/DR-002 Report fatal CPU exceptions through COM1.md>) for
+exception handling. All exception handlers halt, including breakpoints; there
+is no recovery or return ABI yet. Assembly normalizes CPU error-code frames and
+captures CR2 before calling Rust. Diagnostic code has a recursion guard and
+bounded UART polling. Faults before IDT installation and failures in the
+reporting path itself may still prevent output.
+
+QEMU fault images execute real divide, invalid-opcode, selector, unmapped-page,
+and invalid-stack faults, plus a Rust panic. The guest checks vector/error
+codes, instruction addresses where defined, and CR2 before signaling success.
+The double-fault case also verifies that its frame is on the emergency stack
+and preserves the invalid interrupted stack pointer.
 
 ## Intended interaction model
 
@@ -73,8 +91,8 @@ The exact notification and privilege-transition mechanisms remain undecided.
 
 ## Next milestones
 
-1. Harden boot diagnostics with interrupt/exception handling and explicit
-   memory permissions before introducing concurrent device access.
+1. Establish explicit memory permissions and interrupt-controller/device
+   interrupt handling before introducing concurrent device access.
 2. Define a minimal versioned request/completion format and test bounded queue
    wraparound, full/empty behavior, and ownership on the host.
 3. Implement a small interpreter and verifier with malformed-program tests and
