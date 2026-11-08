@@ -6,14 +6,22 @@ model. This is an experimental process ABI, not Linux/POSIX compatibility.
 
 ```sh
 ./n run-user        # Build and run the embedded Rust queue demo
+./n run-user -- 6   # Select the infinite-loop scenario
+./n run-user --scenario registers
+./n run-user --list-scenarios
 ./n userspace-test  # Native privilege, queue, FP/register, and recovery checks
 ```
 
 The demo prints `Byte Ring OS: hello from ring 3 via SQ/CQ`, validates the CQ,
 checks rejected handles/programs, then exits. The kernel reports `Exited(0)`
-and halts. Ctrl+C stops QEMU. Source is in `crates/user-demo`; its ELF is built
+and halts. A selected fault or timeout is also reported before halting.
+Ctrl+C stops QEMU. Source is in `crates/user-demo`; its ELF is built
 separately under `target/user/` before embedding in the userspace kernel image.
-`./n check` includes its native lint and integration tests.
+`./n check` includes its native lint and integration tests. Selection accepts
+a number (0–16) or a name from the catalogue. The launcher rejects unknown
+values before building. It passes `user-scenario=N` through the bounded
+Multiboot command line; selection never changes the compiled ELF. With no
+selection, scenario 0 runs. String argv remains unimplemented.
 
 ## Loading and mappings
 

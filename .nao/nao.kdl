@@ -40,7 +40,7 @@ recipe "default" {
     run shell="./scripts/test-userspace.sh"
   }
   task "run-user" description="Boot the embedded Rust ring-3 queue demo" direct-output=#true {
-    run shell="./scripts/build-kernel.sh --userspace && ./scripts/qemu.sh -machine pc -accel tcg -cpu qemu64 -m 64M -smp 1 -display none -monitor none -serial stdio -no-reboot -no-shutdown -kernel target/userspace/x86_64-unknown-none/release/byte-ring-kernel.bin"
+    run shell="./scripts/run-user.sh"
   }
   task "userspace-clippy" description="Lint the native userspace kernel and Rust program" {
     run shell="./scripts/build-kernel.sh --userspace --clippy && ./scripts/build-kernel.sh --userspace-test --clippy"

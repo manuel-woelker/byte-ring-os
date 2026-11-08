@@ -1,5 +1,6 @@
 #![no_std]
 
+pub mod boot_options;
 pub mod bytecode;
 pub mod clock;
 pub mod elf;

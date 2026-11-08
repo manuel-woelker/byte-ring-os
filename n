@@ -4,4 +4,8 @@ set -euo pipefail
 
 readonly REPOSITORY_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
+if [[ "${1:-}" == run-user && ( "${2:-}" == -- || "${2:-}" == --scenario || "${2:-}" == --list-scenarios ) ]]; then
+  shift
+  exec python3 "${REPOSITORY_ROOT}/scripts/user-scenarios.py" "$@"
+fi
 exec "${REPOSITORY_ROOT}/t" nao "$@"

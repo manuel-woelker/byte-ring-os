@@ -17,6 +17,8 @@ multiboot_header:
 _start:
     cli
     cld
+    movl %eax, saved_multiboot_magic
+    movl %ebx, saved_multiboot_info
     // Do not depend on inherited descriptor registers after leaving this entry.
     lgdt gdt_pointer
     // Zero all BSS, including the page tables, before using the new stack.
@@ -74,6 +76,8 @@ long_mode_start:
     movw %ax, %gs
     leaq stack_top(%rip), %rsp
     xorq %rbp, %rbp
+    movl saved_multiboot_magic(%rip), %edi
+    movl saved_multiboot_info(%rip), %esi
     call kernel_main
 2:
     cli
@@ -103,3 +107,9 @@ page_directory:
 stack_bottom:
     .skip 65536
 stack_top:
+
+// Loader values must survive BSS clearing and the long-mode transition.
+.section .data.boot,"aw"
+.balign 4
+saved_multiboot_magic: .long 0
+saved_multiboot_info: .long 0

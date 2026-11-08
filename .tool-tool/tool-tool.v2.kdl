@@ -20,6 +20,7 @@ tools {
 			PATH "${env:PATH|/usr/bin:/bin}"
 			HOME "${env:HOME|/tmp}"
 			XDG_RUNTIME_DIR "${env:XDG_RUNTIME_DIR|}"
+			BYTE_RING_USER_SCENARIO "${env:BYTE_RING_USER_SCENARIO|0}"
 		}
 	}
 

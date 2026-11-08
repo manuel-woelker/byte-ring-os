@@ -7,7 +7,7 @@ pub(super) fn finish(success: bool) -> ! {
     port.write_u8(0, if success { 0x10 } else { 0x11 });
     crate::halt()
 }
-pub(super) fn run() -> ! {
+pub(super) fn run(selected: Option<u64>) -> ! {
     for (argument, expected) in [
         (0, Outcome::Exited(0)),
         (1, Outcome::Fault(14, 5)),
@@ -28,6 +28,9 @@ pub(super) fn run() -> ! {
         (16, Outcome::BadReturn),
         (0, Outcome::Exited(0)),
     ] {
+        if selected.is_some_and(|selected| selected != argument) {
+            continue;
+        }
         let result = execute(argument);
         state(|s| {
             crate::files::log(
@@ -37,6 +40,9 @@ pub(super) fn run() -> ! {
         });
         if result != expected {
             finish(false);
+        }
+        if selected.is_some() {
+            finish(true);
         }
     }
     state(|s| {

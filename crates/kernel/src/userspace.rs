@@ -232,7 +232,7 @@ fn execute(argument: u64) -> Outcome {
     state(|s| s.outcome)
 }
 
-pub fn run(files: BootFiles) -> ! {
+pub fn run(files: BootFiles, scenario: Option<u64>) -> ! {
     initialize_cpu();
     let clock = super::clock::initialize();
     // SAFETY: PIC, ELCR and PIT0 are exclusively boot-owned here with IF=0.
@@ -260,11 +260,17 @@ pub fn run(files: BootFiles) -> ! {
         });
     }
     #[cfg(feature = "userspace-test")]
-    checks::run();
+    checks::run(scenario);
     #[cfg(not(feature = "userspace-test"))]
     {
-        let result = execute(0);
-        state(|s| super::files::log(&mut s.files, format_args!("userspace: {result:?}\r\n")));
+        let argument = scenario.unwrap_or(0);
+        let result = execute(argument);
+        state(|s| {
+            super::files::log(
+                &mut s.files,
+                format_args!("userspace scenario={argument}: {result:?}\r\n"),
+            )
+        });
         super::halt()
     }
 }

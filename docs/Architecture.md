@@ -40,7 +40,8 @@ and enters Rust with interrupts disabled. It identity maps the first GiB using
 supervisor-writable 2 MiB pages. This bootstrap map provides no W^X separation.
 
 The supported initial platform is QEMU's single-core x86_64 PC with COM1 at
-`0x3f8`. The adapter does not consume Multiboot discovery information. At the
+`0x3f8`. The userspace image copies a bounded Multiboot command line for runtime
+scenario selection; other boot discovery information remains unused. At the
 start of Rust entry, the kernel installs an IDT, GDT, and TSS for fatal
 exception diagnostics, with separate emergency stacks for double faults, NMIs,
 and machine checks. This is a development boot path, not a general hardware boot

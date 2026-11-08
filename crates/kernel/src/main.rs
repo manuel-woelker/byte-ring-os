@@ -31,7 +31,7 @@ use core::panic::PanicInfo;
 /// Called only by the assembly adapter after establishing 64-bit execution,
 /// identity mappings, a zeroed BSS, disabled interrupts, and an aligned stack.
 #[unsafe(no_mangle)]
-extern "C" fn kernel_main() -> ! {
+extern "C" fn kernel_main(_boot_magic: u32, _boot_info: u32) -> ! {
     // SAFETY: first initialization on the sole boot CPU at CPL0 with IF=0.
     unsafe { exceptions::initialize() };
     // SAFETY: this is the sole COM1 owner; interrupts and other CPUs are off.
@@ -43,7 +43,17 @@ extern "C" fn kernel_main() -> ! {
         if let Err(error) = result {
             panic!("boot bytecode failed: {error:?}");
         }
-        userspace::run(files)
+        let scenario = match boot::scenario(_boot_magic, _boot_info) {
+            Ok(scenario) => scenario,
+            Err(error) => {
+                files::log(&mut files, format_args!("userspace: {error}\r\n"));
+                #[cfg(feature = "userspace-test")]
+                userspace::test_failure();
+                #[cfg(not(feature = "userspace-test"))]
+                halt()
+            }
+        };
+        userspace::run(files, scenario)
     }
     #[cfg(feature = "network")]
     {
