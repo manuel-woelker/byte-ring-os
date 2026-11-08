@@ -36,10 +36,10 @@ recipe "default" {
   task "run-http" description="Serve the embedded page over a preconfigured host TAP" direct-output=#true {
     run shell="./scripts/run-network.sh --http"
   }
-  task "userspace-test" description="Verify ring-3 queues, isolation, watchdog, and recovery in QEMU" {
+  task "userspace-test" description="Verify preemption, isolated queues, and peer recovery in QEMU" {
     run shell="./scripts/test-userspace.sh"
   }
-  task "run-user" description="Boot the embedded Rust ring-3 queue demo" direct-output=#true {
+  task "run-user" description="Boot one or two isolated Rust userspace scenarios" direct-output=#true {
     run shell="./scripts/run-user.sh"
   }
   task "userspace-clippy" description="Lint the native userspace kernel and Rust program" {

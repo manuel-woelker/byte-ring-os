@@ -9,6 +9,8 @@ pub const BOOT: u64 = BASE + 0x40000;
 pub const SQ: u64 = BASE + 0x41000;
 pub const SQ_HEAD: u64 = BASE + 0x42000;
 pub const CQ: u64 = BASE + 0x43000;
+/// Read-only diagnostic count; not queue control authority.
+pub const QUANTA: u64 = SQ_HEAD + 8;
 pub const CQ_CONSUMER: u64 = BASE + 0x44000;
 pub const CAPACITY: u64 = 4;
 pub const MAX_PROGRAM: usize = 256;

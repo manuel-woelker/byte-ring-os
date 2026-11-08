@@ -33,12 +33,13 @@ register context, error codes, and page-fault address/access details before
 halting. Double faults use an emergency stack.
 
 Boot support is a minimal Multiboot v1 adapter with an initial identity map,
-stack, and fatal kernel exception handling. There is no general memory manager
-or scheduler. A separate userspace image executes a protected ring-3 Rust ELF
-using native SYSCALL, SQ/CQ, and bytecode WRITE to stdout. User faults and a
-hardware execution budget terminate the instance while preserving the kernel.
-The user and network images remain separate. See [Userspace](docs/Userspace.md)
-and [Bytecode API](docs/Bytecode%20API.md).
+stack, and fatal kernel exception handling. There is no general memory manager.
+A fixed two-process scheduler uses 10 ms APIC quanta. A separate userspace image
+executes a protected ring-3 Rust ELF using native SYSCALL, SQ/CQ, and bytecode
+WRITE to stdout. User faults and a hardware execution budget terminate the
+instance while preserving the kernel. The user and network images remain
+separate. See [Userspace](docs/Userspace.md) and
+[Bytecode API](docs/Bytecode%20API.md).
 
 A separate network image now supports modern virtio-net, static IPv4
 `192.0.2.2/24`, ARP, and logged ICMP echo replies. Use `./n demo-ping` for an
@@ -63,6 +64,8 @@ and the bare-metal standard library are pinned together at 1.99.0.
 
 ```sh
 ./n run-user       # Embedded ring-3 Rust program using SQ/CQ and bytecode
+./n run-user --scenario task-a --peer task-b  # Timer-preempted isolated peers
+./n run-user --list-scenarios
 ./n userspace-test # Privilege, queue, FP/register, fault, and watchdog checks
 ./n run-http       # Serve the embedded page on a preconfigured host TAP
 ./n http-test      # Rootless HTTP, TCP retransmission, and recovery checks

@@ -21,6 +21,7 @@ tools {
 			HOME "${env:HOME|/tmp}"
 			XDG_RUNTIME_DIR "${env:XDG_RUNTIME_DIR|}"
 			BYTE_RING_USER_SCENARIO "${env:BYTE_RING_USER_SCENARIO|0}"
+			BYTE_RING_USER_PEER "${env:BYTE_RING_USER_PEER|}"
 		}
 	}
 

@@ -1,27 +1,35 @@
 # Userspace
 
-The `userspace` image executes one embedded freestanding Rust ELF program at a
-time at ring 3. It exercises the native SYSCALL boundary and the bytecode SQ/CQ
-model. This is an experimental process ABI, not Linux/POSIX compatibility.
+The `userspace` image runs up to two isolated instances of an embedded Rust ELF
+on one CPU. A local APIC timer preempts them round-robin in 10 ms quanta. Each
+instance owns private memory, queue state, CPU state, stdout grants, and a
+kernel entry stack. This is an experimental process ABI, not POSIX
+compatibility.
 
 ```sh
-./n run-user        # Build and run the embedded Rust queue demo
-./n run-user -- 6   # Select the infinite-loop scenario
-./n run-user --scenario registers
+./n run-user                         # Default hello/queue scenario
+./n run-user -- 6                     # Numeric scenario selection
+./n run-user --scenario registers     # Named scenario selection
 ./n run-user --list-scenarios
-./n userspace-test  # Native privilege, queue, FP/register, and recovery checks
+./n run-user --scenario task-a --peer task-b
+./n run-user --scenario loop --peer hello
+./n userspace-test
 ```
 
-The demo prints `Byte Ring OS: hello from ring 3 via SQ/CQ`, validates the CQ,
-checks rejected handles/programs, then exits. The kernel reports `Exited(0)`
-and halts. A selected fault or timeout is also reported before halting.
-Ctrl+C stops QEMU. Source is in `crates/user-demo`; its ELF is built
-separately under `target/user/` before embedding in the userspace kernel image.
-`./n check` includes its native lint and integration tests. Selection accepts
-a number (0–16) or a name from the catalogue. The launcher rejects unknown
-values before building. It passes `user-scenario=N` through the bounded
-Multiboot command line; selection never changes the compiled ELF. With no
-selection, scenario 0 runs. String argv remains unimplemented.
+`task-a` (17) and `task-b` (18) are CPU-bound probes. They wait without syscalls
+for timer preemption, verify resumed registers/SIMD/segment/data state, and
+print three interleaved progress lines through their own SQ/CQ. `loop` (6) keeps
+running until its CPU budget expires while its healthy peer continues. Exit,
+fault, or timeout affects only its owner. After all selected instances finish,
+the kernel prints their outcomes and timer-switch count, stops the timer, and
+halts. Ctrl+C stops QEMU.
+
+Selection accepts a number (0–18) or a catalogue name. Unknown selections are
+rejected before building. The launcher passes `user-scenario=N` and optional
+`user-peer=N` through a bounded copied Multiboot command line. No selection
+changes the compiled ELF; without a selection, scenario 0 runs alone. String
+argv and selecting different ELF files remain unimplemented. Source is in
+`crates/user-demo`; the ELF is built under `target/user/` before embedding.
 
 ## Loading and mappings
 
@@ -67,51 +75,72 @@ user-buffer pointer argument. Unknown native operations and a zero batch limit
 consume no submissions.
 
 SYSCALL saves the user stack pointer without touching that stack, switches to a
-64 KiB trusted kernel entry stack, masks dangerous flags, saves all general
-registers and FP/SIMD state, and restores trusted kernel FP state before Rust.
-The kernel validates the return instruction against executable file bytes and
-the stack against its fixed mapping. Return uses IRET with fixed user selectors
-and safe flags. RAX/RDX carry count/stop reason, RCX/R11 are clobbered, other
-general registers and FP/SIMD state are preserved. Syscall return flags reset
-to `0x202`; returning interrupts preserve arithmetic/DF state while excluding
-privileged and unsupported flag controls. No SYSRET fast path is present.
+selected process's 64 KiB kernel entry stack, masks dangerous flags, saves all
+general registers and FP/SIMD state, and restores trusted kernel FP state before
+Rust. The kernel validates the return instruction against executable file bytes
+and the stack against its fixed mapping. Return uses IRET with fixed user
+selectors and safe flags. RAX/RDX carry count/stop reason, RCX/R11 are
+clobbered, other general registers and FP/SIMD state are preserved. Syscall
+return flags reset to `0x202`; returning interrupts preserve arithmetic/DF state
+while excluding privileged and unsupported flag controls. No SYSRET fast path is
+present.
 
 ## Ownership and lifetime
 
-Only one process executes at a time. Private kernel cursors bind it to its
-fixed pair. User scalar indices use aligned acquire/release atomic accesses;
-slot bytes use raw bounded copies. The kernel never creates a Rust slice of
-application-mutated storage. It copies a full slot before releasing SQ space,
-validates and executes that private copy, and release-publishes one completion.
-A full CQ leaves the next SQ slot unconsumed. Invalid index movement disables
-the pair for the lifetime of the instance.
+Two fixed slots have distinct physical backing and page roots with the same
+user virtual layout. Each slot owns its saved general/FP/SIMD/segment state,
+kernel stack, queue authority, grant state, and outcome. Hardware UART access
+has one serialized kernel owner; every file call resolves grants for the current
+process. No kernel borrow or hardware operation is suspended across a switch.
 
-Kernel Rust runs with IF clear and bounded per-entry work. User code runs with
-IF enabled, so an APIC execution budget terminates a native infinite loop after
-approximately one second. This is a process budget, not scheduling or a promise
-of an exact wall-clock deadline; bounded kernel work can defer delivery. A
-pending timer from a previous instance is acknowledged and checked against the
-current trusted deadline before terminating anything.
+Private kernel cursors bind each caller to its own pair. User scalar indices
+use aligned acquire/release atomics; slot bytes use bounded raw copies. The
+kernel never creates a Rust slice of application-mutated storage. A full slot
+is copied before SQ release, then that private copy is validated/executed and
+one completion is published. Full CQ leaves the next SQ slot unconsumed; bad
+index movement disables only that pair. A read-only diagnostic u64 at offset 8
+of the SQ-consumer page counts expired quanta. It is not queue authority and
+does not alter the immutable bootstrap descriptor.
 
-Ordinary user CPU faults log vector, error, RIP, and CR2, then terminate only
-the process. Kernel faults, NMI, double fault, and machine check retain fatal
-diagnostics. Exit/fault/timeout stops the timer and restores the saved boot
-stack, page root, and FP context. A new instance resets all user backing and
-queue authority. Unread completions are discarded; previous file effects are
-not rolled back. There is no concurrent network service in this image.
+Kernel Rust runs with IF clear and bounded per-entry work. APIC quanta preempt
+user execution; an expired quantum at syscall return defers the switch until
+the entire call finishes. A saved return frame/FP state is copied into the
+process slot, and a peer's state replaces it. CR3, TSS RSP0, and the syscall
+stack pointer follow the selected process before IRET. No kernel stack with a
+suspended Rust call is resumed. With one runnable slot, it continues after its
+quantum; retired slots are skipped.
+
+Each process has an approximately one-second CPU execution budget, including
+bounded kernel work on its behalf. Waiting for a peer consumes none of that
+budget. A native infinite loop is terminated on exhaustion; this is not a
+hard wall-clock or real-time guarantee. Canceled timer delivery is acknowledged
+and checked against the current trusted deadline before rotating a fresh task.
+
+Ordinary user faults log PID, vector, error, RIP, and CR2, then retire only that
+process. Kernel faults, NMI, double fault, and machine check remain fatal. A
+runnable peer resumes immediately after exit/fault/budget exhaustion. When all
+slots finish, the saved bootstrap stack, page root, and FP state are restored.
+Backing stays pinned through the batch; a later batch resets backing, queues,
+CPU state, and grants. Unread completions are discarded and previous file
+effects are not rolled back. Networking remains a separate kernel image.
 
 ## Verification and next work
 
-Host tests cover ELF validation/BSS, queue wraparound, full CQ, hostile cursor
-movement, batch snapshots, mutation after copy, malformed bytecode, and denied
-handles. QEMU runs 17 scenarios plus a final healthy instance. It verifies
-CPL3, native syscalls, fresh BSS, general/SIMD/MXCSR preservation, entry flags,
-protected code/queue/descriptor/APIC pages, stack guard/NX, I/O denial, invalid
-and noncanonical return stacks, queue disable/backpressure, and watchdog
-recovery. Serial artifacts are in `target/userspace-test/integration/`.
+Host tests cover ELF/BSS, queue wraparound/backpressure/hostile cursors,
+copy-before-verify, boot-option validation, round-robin timing, retired slots,
+and per-process budget accounting. QEMU retains the privilege suite and adds two
+CPU-bound peers with independent data, stack, GPR, SIMD, MXCSR, segment, DF and
+queue state. The probe waits for real timer quanta without yielding. Tests
+require interleaved progress and multiple genuine peer switches. Additional
+batches pair an infinite loop, a user fault, and a bad queue with a healthy
+peer; a fresh healthy instance runs afterward. Native entry asserts the selected
+kernel-stack bounds. CLI tests select scenarios from the same built image and
+reject invalid boot options. Logs are in `target/userspace-test/integration/`.
 
-Next steps are an explicit process table and scheduler, resumable timer
-preemption, general memory allocation/user-copy contracts, then file-backed
-loading and application networking. This milestone establishes CPU isolation
-and queue ownership before those concurrent lifetimes are introduced. See
-[DR-009](<decisions/DR-009 Run isolated native programs through queue syscalls.md>).
+Next steps are blocking/yield/wakeup semantics, safe resource reclamation and
+general memory allocation, then dynamic loading and application networking.
+There is no SMP, dynamic process creation, kernel preemption, or network/user
+co-scheduling yet. See
+[DR-009](<decisions/DR-009 Run isolated native programs through queue syscalls.md>)
+and
+[DR-010](<decisions/DR-010 Preempt two isolated processes at user return boundaries.md>).

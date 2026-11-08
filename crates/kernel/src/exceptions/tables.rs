@@ -1,4 +1,4 @@
-//! Boot-CPU-owned GDT, TSS, and IDT. No table changes occur after installation.
+//! Boot-CPU-owned descriptor tables. TSS RSP0 follows the selected user task.
 
 use core::arch::asm;
 use core::cell::UnsafeCell;
@@ -62,8 +62,8 @@ struct TaskStateSegment {
 struct Stack([u8; 32 * 1024]);
 
 struct BootCell<T>(UnsafeCell<T>);
-// SAFETY: only install writes these objects, once on the boot CPU with IF=0.
-// Afterwards hardware only reads the IDT/GDT/TSS; dedicated IST stacks are used
+// SAFETY: the sole boot CPU installs these objects and updates TSS RSP0 with IF=0.
+// Afterwards IDT/GDT stay fixed; the sole CPU updates TSS RSP0 with IF=0. IST stacks are used
 // by their assigned exception only. There is no SMP or concurrent mutation.
 unsafe impl<T> Sync for BootCell<T> {}
 
@@ -189,4 +189,16 @@ pub(super) fn on_double_fault_stack(
 ) -> bool {
     let start = DOUBLE_FAULT_STACK.0.get() as usize;
     (start..start + size_of::<Stack>()).contains(&(frame as *const _ as usize))
+}
+
+/// # Safety
+/// Sole CPU, IF=0, stack must be pinned supervisor-only memory for the next task.
+#[cfg(feature = "userspace")]
+pub(super) unsafe fn set_user_stack(top: u64) {
+    // SAFETY: caller serializes TSS mutation while no user entry can occur.
+    unsafe {
+        addr_of_mut!((*TSS.0.get()).rsp)
+            .cast::<u64>()
+            .write_unaligned(top);
+    }
 }

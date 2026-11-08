@@ -53,7 +53,7 @@ extern "C" fn kernel_main(_boot_magic: u32, _boot_info: u32) -> ! {
                 halt()
             }
         };
-        userspace::run(files, scenario)
+        userspace::run(files, scenario.scenario, scenario.peer)
     }
     #[cfg(feature = "network")]
     {

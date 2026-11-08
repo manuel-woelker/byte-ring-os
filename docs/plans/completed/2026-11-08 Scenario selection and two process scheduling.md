@@ -29,11 +29,11 @@ creation, blocking services, or kernel preemption.
 
 - [x] Implement validated CLI/catalogue, bounded Multiboot parsing, native
   scenario selection tests, usage docs; run `./n check` and commit.
-- [ ] Record scheduling decision and implement tested portable round-robin
+- [x] Record scheduling decision and implement tested portable round-robin
   timing/lifecycle policy and per-process native resources/contexts.
-- [ ] Add real preemption/resumption and adversarial peer QEMU tests; update
+- [x] Add real preemption/resumption and adversarial peer QEMU tests; update
   architecture/API/demo documentation and run `./n check`.
-- [ ] Commit completed scheduling work and move this plan to completed.
+- [x] Commit completed scheduling work and move this plan to completed.
 
 ## Verification and risks
 
@@ -56,3 +56,23 @@ selection of port-I/O, infinite-loop, and invalid scenarios from the same ELF.
 The actual `./n run-user --scenario port-io` command reported scenario 5 and
 Fault(13, 0), then its QEMU instance was stopped. The pinned Nao task graph is
 preserved by passing the validated selection through an explicit tool env var.
+
+## Scheduler results
+
+The CLI phase was committed as `24e8caf` before scheduler implementation.
+[DR-010](<../../decisions/DR-010 Preempt two isolated processes at user return boundaries.md>)
+records the two-slot return-boundary design. Each process now has independent
+page backing/root, queue authority, kernel stack, grant state, and resumable
+GPR/FP/SIMD/segment state. Ten-millisecond APIC quanta rotate peers, while the
+one-second CPU budget contains an infinite loop without blocking its peer.
+
+`./n check` passes with host policy/parser tests and all existing boot/network/
+HTTP checks plus the expanded userspace suite. QEMU verifies interleaved A/B
+progress, at least four genuine peer timer switches, distinct data/queue/CPU
+state, and healthy-peer recovery from an infinite loop, a fault, or a disabled
+queue. A fresh healthy instance runs after all batches. The real
+`./n run-user --scenario task-a --peer task-b` command printed all six progress
+lines, both Exited(0) outcomes, and six timer switches; its QEMU was stopped.
+
+The pinned two-slot model still has no allocator, dynamic process creation,
+blocking services, SMP, kernel preemption, or network/user co-scheduling.

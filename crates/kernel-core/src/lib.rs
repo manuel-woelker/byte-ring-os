@@ -11,4 +11,5 @@ pub mod idle;
 pub mod limits;
 pub mod network;
 pub mod queue;
+pub mod scheduler;
 pub mod user_abi;

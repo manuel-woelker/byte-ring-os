@@ -1,7 +1,8 @@
 # DR-009: Run isolated native programs through queue syscalls
 
-- Status: Accepted
-- Date: 2026-11-07
+- Status: Superseded in part by
+  [DR-010](<./DR-010 Preempt two isolated processes at user return boundaries.md>)
+- Date: 2026-11-08 (originally accepted 2026-11-07)
 
 ## Decision
 

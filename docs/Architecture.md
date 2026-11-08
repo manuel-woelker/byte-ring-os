@@ -45,9 +45,10 @@ scenario selection; other boot discovery information remains unused. At the
 start of Rust entry, the kernel installs an IDT, GDT, and TSS for fatal
 exception diagnostics, with separate emergency stacks for double faults, NMIs,
 and machine checks. This is a development boot path, not a general hardware boot
-guarantee. There is no allocator, scheduler, SMP, or memory manager. Ordinary
-boot/fault images keep maskable interrupts disabled; network images enable them
-only while sleeping, as described below.
+guarantee. There is no allocator, SMP, or general memory manager. The userspace
+image has a fixed two-slot scheduler. Ordinary boot/fault images keep maskable
+interrupts disabled; network images enable them only while sleeping, as
+described below.
 
 Host tests enable the explicit `test-hal` feature. Production builds reject it;
 host builds reject the native I/O backend. Separate Cargo invocations avoid
@@ -184,13 +185,25 @@ validation/execution, and publishes correlated results. Native syscall 0
 progresses the pair; syscall 1 exits as a lifecycle operation. File effects
 remain bytecode WRITE. No general user buffer pointers are accepted.
 
-Ordinary user faults, invalid return context, and an approximately one-second
-APIC execution budget terminate only that instance and restore the boot
-context. Kernel faults remain fatal. Execution is one program at a time with
-static backing, without a scheduler, allocator, or concurrent networking.
-See [Userspace](Userspace.md) and
+Two process slots have independent page roots/backing, kernel entry stacks,
+saved general/FP/SIMD/segment state, queues, stdout grants, and outcomes. Local
+APIC quanta select runnable peers round-robin every 10 ms. Switching occurs only
+at a user return boundary or after a complete bounded syscall; kernel work and
+hardware ownership stay serialized with IF clear. CR3, TSS RSP0 and the syscall
+stack pointer follow the selected process. No suspended kernel call is resumed.
+
+A per-process CPU budget of approximately one second contains native loops,
+while waiting time is not charged. Exit, user fault, bad return state, or budget
+exhaustion retires only its owner and resumes a peer. When all slots finish,
+the timer stops and the saved bootstrap context is restored. Fixed storage is
+reinitialized only between batches. The CLI selects one scenario and an optional
+peer; both instances currently use the same embedded ELF.
+
+There is no allocator, dynamic process creation, blocking wait, SMP, or
+concurrent networking. See [Userspace](Userspace.md),
 [DR-009](<decisions/DR-009 Run isolated native programs through queue syscalls.md>)
-for loading, limits, ownership, privilege transitions, tests, and exclusions.
+and its scheduling successor
+[DR-010](<decisions/DR-010 Preempt two isolated processes at user return boundaries.md>).
 
 ## Application interaction model
 
@@ -212,8 +225,8 @@ bytecode/service layer is described in
 [DR-004](<decisions/DR-004 Write through file handles with typed bytecode operands.md>).
 The boot file context grants only stdout handle 0, backed by the UART driver;
 the VM can dispatch other handle numbers through a different context. Whole
-program validation precedes file effects. Memory-reference mode is reserved
-and rejected. General process creation, dynamic queue setup, scheduling, and
+program validation precedes file effects. Memory-reference mode is reserved and
+rejected. Dynamic process creation/queue setup, blocking services, and
 application networking remain unimplemented.
 
 The initial queues are single-producer/single-consumer and programs complete
@@ -231,8 +244,8 @@ mappings must precede isolated applications.
 
 ## Next milestones
 
-1. Introduce an explicit process table and resumable scheduling before allowing
-   concurrent user execution or interleaving networking with applications.
+1. Define blocking, wakeup, cancellation, and reclamation before adding
+   asynchronous services or co-scheduling networking with applications.
 2. Establish general allocation, page ownership, user-copy, and address-space
    teardown contracts beyond the fixed embedded image.
 3. Add file-backed ELF loading and application services while retaining private

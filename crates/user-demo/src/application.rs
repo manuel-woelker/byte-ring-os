@@ -12,6 +12,7 @@ use core::{
 core::arch::global_asm!(include_str!("state_probe.S"), options(att_syntax));
 unsafe extern "C" {
     fn user_state_probe() -> u64;
+    fn user_preemption_probe(counter: u64, threshold: u64, pattern: u64) -> u64;
 }
 static mut FRESH_BSS: [u8; 32] = [0; 32];
 
@@ -41,12 +42,18 @@ fn counter(address: u64, value: Option<u64>) -> u64 {
     counter.load(Ordering::Acquire)
 }
 fn submit(sequence: u64, handle: Option<u64>, malformed: bool) {
+    submit_bytes(
+        sequence,
+        handle,
+        malformed,
+        b"Byte Ring OS: hello from ring 3 via SQ/CQ\r\n",
+    );
+}
+fn submit_bytes(sequence: u64, handle: Option<u64>, malformed: bool, payload: &[u8]) {
     let mut bytes = [0; MAX_PROGRAM];
     let mut program = ProgramBuilder::new(&mut bytes);
     if let Some(handle) = handle {
-        program
-            .write(handle, b"Byte Ring OS: hello from ring 3 via SQ/CQ\r\n")
-            .unwrap();
+        program.write(handle, payload).unwrap();
     }
     program.return_imm(123).unwrap();
     let mut entry = [0; SUBMISSION_SIZE];
@@ -204,7 +211,50 @@ pub fn run(boot: u64, argument: u64) -> ! {
                 options(noreturn)
             );
         },
+        17 | 18 => worker(argument),
         _ => exit(98),
     }
     exit(97)
+}
+
+fn worker(argument: u64) -> ! {
+    let pointer = core::ptr::addr_of_mut!(FRESH_BSS).cast::<u8>();
+    for index in 0..32 {
+        // SAFETY: our ELF-owned writable BSS; each process must see its own copy.
+        unsafe {
+            pointer.add(index).write_volatile(argument as u8);
+        }
+    }
+    let messages: [&[u8]; 3] = if argument == 17 {
+        [
+            b"task A quantum 1\r\n",
+            b"task A quantum 2\r\n",
+            b"task A quantum 3\r\n",
+        ]
+    } else {
+        [
+            b"task B quantum 1\r\n",
+            b"task B quantum 2\r\n",
+            b"task B quantum 3\r\n",
+        ]
+    };
+    for round in 1..=3 {
+        // SAFETY: the read-only diagnostic scalar is pinned and aligned. The
+        // probe preserves the Rust C ABI and verifies timer-resumed CPU state.
+        assert_eq!(
+            unsafe { user_preemption_probe(QUANTA, round, 0x1122334400000000 | argument) },
+            1
+        );
+        for index in 0..32 {
+            assert_eq!(
+                unsafe { pointer.add(index).read_volatile() },
+                argument as u8
+            );
+        }
+        let sequence = round - 1;
+        submit_bytes(sequence, Some(0), false, messages[sequence as usize]);
+        assert_eq!(call(0, 1), (1, Stop::Idle as u64));
+        completion(sequence, Status::Success);
+    }
+    exit(0)
 }

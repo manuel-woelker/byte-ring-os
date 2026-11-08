@@ -183,7 +183,8 @@ failures, not native CPU exceptions that halt the kernel.
 Keep mappings and queue storage alive while an entry is executing. Initially
 there is no cancellation or live resize, and all accepted programs finish before
 the syscall returns. Application termination disables its pair and releases
-resources after execution stops; completions are not promised to a dead owner.
+queue authority after execution stops; fixed backing remains pinned until the
+batch finishes. Completions are not promised to a dead owner.
 Future asynchronous services need an explicit outstanding-request lifecycle.
 
 Implement portable queue validation, bytecode decoding, verification, and VM
@@ -218,6 +219,8 @@ Each queue page has an aligned u64 counter at 0 and slots beginning at 64.
 The SQ consumer and CQ consumer each occupy separate pages. Stop values are
 Idle=0, BatchLimit=1, CompletionFull=2, Busy=3 (reserved), QueueFault=4, and
 BadArgument=5. A disabled pair remains disabled until process teardown.
+The read-only SQ-consumer page also exposes a diagnostic u64 quantum count at
+offset 8; it has no queue-control role. Each process has independent counters.
 Native syscall 1 implements process exit with status in RDI; it is a
 lifecycle operation, while all file effects continue through bytecode.
 
@@ -229,3 +232,13 @@ instruction and output bounds u32 at 96/100. Other bytes are zero. RDI names
 this descriptor and RSI carries an opaque initial argument. Layout constants and
 codecs live in `kernel_core::user_abi`; applications never select another
 process's pair.
+
+## Scheduling boundary
+
+The two-slot userspace scheduler preempts native execution in 10 ms quanta.
+An in-progress kernel entry is never suspended: it finishes its bounded batch
+and publishes completions before a deferred switch. On resumption, the syscall
+returns its original count and stop reason. Queue state and stdout grants belong
+to the selected process; application arguments cannot choose a peer's pair.
+Exit/fault/budget exhaustion retire only their owner. See
+[DR-010](<decisions/DR-010 Preempt two isolated processes at user return boundaries.md>).

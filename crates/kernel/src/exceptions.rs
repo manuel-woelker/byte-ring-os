@@ -34,3 +34,12 @@ extern "C" fn exception_dispatch(frame: &ExceptionFrame) -> ! {
         super::halt()
     }
 }
+
+/// # Safety
+/// IF=0 on the sole CPU; top identifies the selected process's pinned stack.
+#[cfg(feature = "userspace")]
+pub unsafe fn set_user_stack(top: u64) {
+    unsafe {
+        tables::set_user_stack(top);
+    }
+}

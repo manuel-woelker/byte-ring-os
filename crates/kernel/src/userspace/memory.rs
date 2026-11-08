@@ -2,6 +2,7 @@
 use byte_ring_kernel_core::{
     elf::{Image, Permission},
     queue,
+    scheduler::CAPACITY as PROCESSES,
     user_abi::*,
 };
 use core::{
@@ -23,22 +24,43 @@ struct Cell<T>(UnsafeCell<T>);
 // SAFETY: only the boot CPU with IF=0 loads/reinitializes these objects; no
 // references are held while user code executes. User sharing uses raw/atomic I/O.
 unsafe impl<T> Sync for Cell<T> {}
-static PAGES: Cell<Pages> = Cell(UnsafeCell::new(Pages([[0; PAGE]; BACKING_PAGES])));
-static TABLES: Cell<Tables> = Cell(UnsafeCell::new(Tables {
-    root: [0; 512],
-    pdpt: [0; 512],
-    directory: [0; 512],
-    leaves: [0; 512],
-}));
+static PAGES: Cell<[Pages; PROCESSES]> = Cell(UnsafeCell::new(
+    [const { Pages([[0; PAGE]; BACKING_PAGES]) }; PROCESSES],
+));
+static TABLES: Cell<[Tables; PROCESSES]> = Cell(UnsafeCell::new(
+    [const {
+        Tables {
+            root: [0; 512],
+            pdpt: [0; 512],
+            directory: [0; 512],
+            leaves: [0; 512],
+        }
+    }; PROCESSES],
+));
+#[repr(C, align(16))]
+struct Stacks([[u8; 65536]; PROCESSES]);
+static STACKS: Cell<Stacks> = Cell(UnsafeCell::new(Stacks([[0; 65536]; PROCESSES])));
+pub fn kernel_stack_top(process: usize) -> u64 {
+    assert!(process < PROCESSES);
+    STACKS
+        .0
+        .get()
+        .cast::<u8>()
+        .wrapping_add((process + 1) * 65536) as u64
+}
 unsafe extern "C" {
     static pdpt: [u64; 512];
 }
 
-fn page(index: usize) -> *mut u8 {
-    assert!(index < BACKING_PAGES);
-    PAGES.0.get().cast::<u8>().wrapping_add(index * PAGE)
+fn page(process: usize, index: usize) -> *mut u8 {
+    assert!(process < PROCESSES && index < BACKING_PAGES);
+    PAGES
+        .0
+        .get()
+        .cast::<u8>()
+        .wrapping_add((process * BACKING_PAGES + index) * PAGE)
 }
-fn map(tables: &mut Tables, address: u64, index: usize, permission: Permission) {
+fn map(process: usize, tables: &mut Tables, address: u64, index: usize, permission: Permission) {
     let flags =
         5 | if permission == Permission::Write {
             2
@@ -49,18 +71,19 @@ fn map(tables: &mut Tables, address: u64, index: usize, permission: Permission) 
         } else {
             1 << 63
         };
-    tables.leaves[((address - BASE) / PAGE as u64) as usize] = page(index) as u64 | flags;
+    tables.leaves[((address - BASE) / PAGE as u64) as usize] = page(process, index) as u64 | flags;
 }
 /// Prepare only when no process is running. Backing never moves; no external
 /// pointers select mappings. Writable aliases are supervisor-only in the kernel.
-pub fn prepare(image: &Image<'_>) -> u64 {
+pub fn prepare(process: usize, image: &Image<'_>) -> u64 {
     // SAFETY: caller is the sole inactive-process boot owner, IF=0. This scope
     // ends all mutable references before the CPU enters ring 3.
     unsafe {
-        core::ptr::write_bytes(PAGES.0.get().cast::<u8>(), 0, BACKING_PAGES * PAGE);
-        image.load(&mut *PAGES.0.get().cast::<[u8; IMAGE_PAGES * PAGE]>());
-        page(IMAGE_PAGES + STACK_PAGES).copy_from_nonoverlapping(bootstrap().as_ptr(), 128);
-        let tables = &mut *TABLES.0.get();
+        core::ptr::write_bytes(page(process, 0), 0, BACKING_PAGES * PAGE);
+        image.load(&mut *page(process, 0).cast::<[u8; IMAGE_PAGES * PAGE]>());
+        page(process, IMAGE_PAGES + STACK_PAGES)
+            .copy_from_nonoverlapping(bootstrap().as_ptr(), 128);
+        let tables = &mut *TABLES.0.get().cast::<Tables>().add(process);
         tables.root.fill(0);
         tables.pdpt.fill(0);
         tables.directory.fill(0);
@@ -74,11 +97,18 @@ pub fn prepare(image: &Image<'_>) -> u64 {
         for index in 0..IMAGE_PAGES {
             let permission = image.permission(index);
             if permission != Permission::Absent {
-                map(tables, BASE + (index * PAGE) as u64, index, permission);
+                map(
+                    process,
+                    tables,
+                    BASE + (index * PAGE) as u64,
+                    index,
+                    permission,
+                );
             }
         }
         for index in 0..STACK_PAGES {
             map(
+                process,
                 tables,
                 STACK + (index * PAGE) as u64,
                 IMAGE_PAGES + index,
@@ -96,6 +126,7 @@ pub fn prepare(image: &Image<'_>) -> u64 {
         .enumerate()
         {
             map(
+                process,
                 tables,
                 address,
                 IMAGE_PAGES + STACK_PAGES + index,
@@ -108,53 +139,72 @@ pub fn prepare(image: &Image<'_>) -> u64 {
 
 /// User memory operations are restricted to these known, permanently pinned
 /// pages. No Rust slice/reference is made to application-mutated byte storage.
-pub struct Shared;
-fn shared_page(index: usize) -> *mut u8 {
-    page(IMAGE_PAGES + STACK_PAGES + index)
+pub struct Shared {
+    process: usize,
 }
-fn load(index: usize) -> u64 {
-    // SAFETY: page-aligned, initialized atomic counters, valid for the process.
-    unsafe { (&*shared_page(index).cast::<AtomicU64>()).load(Ordering::Acquire) }
+impl Shared {
+    pub fn new(process: usize) -> Self {
+        assert!(process < PROCESSES);
+        Self { process }
+    }
 }
-fn store(index: usize, value: u64) {
-    // SAFETY: only the foreground kernel publishes these kernel-owned counters.
+fn shared_page(process: usize, index: usize) -> *mut u8 {
+    page(process, IMAGE_PAGES + STACK_PAGES + index)
+}
+fn load(process: usize, index: usize) -> u64 {
+    // SAFETY: initialized aligned atomic counters in the selected pinned pool.
+    unsafe { (&*shared_page(process, index).cast::<AtomicU64>()).load(Ordering::Acquire) }
+}
+fn store(process: usize, index: usize, value: u64) {
+    // SAFETY: only the selected process's foreground owner publishes counters.
     unsafe {
-        (&*shared_page(index).cast::<AtomicU64>()).store(value, Ordering::Release);
+        (&*shared_page(process, index).cast::<AtomicU64>()).store(value, Ordering::Release);
+    }
+}
+pub fn on_kernel_stack(process: usize, pointer: *const u8) -> bool {
+    let top = kernel_stack_top(process);
+    (top - 65536..top).contains(&(pointer as u64))
+}
+/// Read-only diagnostic field, separate from the authoritative SQ head.
+pub fn publish_quanta(process: usize, quanta: u64) {
+    // SAFETY: aligned kernel-owned scalar, no user write mapping.
+    unsafe {
+        (&*shared_page(process, 2).add(8).cast::<AtomicU64>()).store(quanta, Ordering::Release);
     }
 }
 impl queue::Memory for Shared {
     fn submission_tail(&mut self) -> u64 {
-        load(1)
+        load(self.process, 1)
     }
     fn completion_tail(&mut self) -> u64 {
-        load(4)
+        load(self.process, 4)
     }
     fn copy_submission(&mut self, slot: usize, output: &mut [u8; SUBMISSION_SIZE]) {
         assert!(slot < CAPACITY as usize);
         for (offset, byte) in output.iter_mut().enumerate() {
-            // SAFETY: bounds derive only from a validated private slot number.
+            // SAFETY: private process index and bounded slot select pinned RAM.
             *byte = unsafe {
-                shared_page(1)
+                shared_page(self.process, 1)
                     .add(ENTRIES + slot * SUBMISSION_SIZE + offset)
                     .read_volatile()
             };
         }
     }
     fn publish_submission_head(&mut self, head: u64) {
-        store(2, head);
+        store(self.process, 2, head);
     }
     fn write_completion(&mut self, slot: usize, bytes: &[u8; COMPLETION_SIZE]) {
         assert!(slot < CAPACITY as usize);
         for (offset, byte) in bytes.iter().enumerate() {
-            // SAFETY: only the kernel writes these statically bounded CQ slots.
+            // SAFETY: these bounded slots belong only to the selected process.
             unsafe {
-                shared_page(3)
+                shared_page(self.process, 3)
                     .add(ENTRIES + slot * COMPLETION_SIZE + offset)
                     .write_volatile(*byte);
             }
         }
     }
     fn publish_completion_head(&mut self, head: u64) {
-        store(3, head);
+        store(self.process, 3, head);
     }
 }
